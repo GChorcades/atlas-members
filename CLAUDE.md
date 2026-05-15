@@ -4,6 +4,8 @@
 
 Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas).
 
+**Repositório:** https://github.com/GChorcades/atlas-members (público). Branch principal: `main`. Credencial salva no macOS keychain — `git push` funciona direto sem prompt.
+
 ## Comandos
 
 - `npm run dev` — Next dev em :3001
