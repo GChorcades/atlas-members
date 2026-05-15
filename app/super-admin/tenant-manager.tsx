@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   createTenant,
@@ -122,7 +123,10 @@ export default function TenantManager({
           </div>
         </div>
         <div className="row" style={{ gap: 14, alignItems: 'center' }}>
-          <span className="muted" style={{ fontSize: 13 }}>{adminName}</span>
+          <Link href="/super-admin/account" className="muted" style={{ fontSize: 13, textDecoration: 'none' }}>
+            {adminName}
+          </Link>
+          <Link href="/super-admin/account" className="btn btn-ghost btn-sm">Conta</Link>
           <form action={superAdminLogout}>
             <button type="submit" className="btn btn-ghost btn-sm">Sair</button>
           </form>

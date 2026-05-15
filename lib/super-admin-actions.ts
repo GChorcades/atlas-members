@@ -198,3 +198,46 @@ export async function toggleTenantActive(id: string, active: boolean): Promise<v
   await db.update(tenants).set({ active }).where(eq(tenants.id, id));
   revalidatePath('/super-admin');
 }
+
+// ─── Conta do super admin ──────────────────────────────────────────────────────
+
+export async function updateSuperAdminProfile(data: {
+  name: string;
+  email: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await assertSuperAdmin();
+  const name = data.name.trim();
+  const email = data.email.trim().toLowerCase();
+
+  if (name.length < 2) return { ok: false, error: 'Nome muito curto.' };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
+
+  const [taken] = await db
+    .select({ id: platformAdmins.id })
+    .from(platformAdmins)
+    .where(eq(platformAdmins.email, email))
+    .limit(1);
+  if (taken && taken.id !== admin.id) return { ok: false, error: 'Este e-mail já está em uso.' };
+
+  await db.update(platformAdmins).set({ name, email }).where(eq(platformAdmins.id, admin.id));
+  revalidatePath('/super-admin/account');
+  return { ok: true };
+}
+
+export async function updateSuperAdminPassword(data: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await assertSuperAdmin();
+
+  const [row] = await db.select().from(platformAdmins).where(eq(platformAdmins.id, admin.id)).limit(1);
+  if (!row) return { ok: false, error: 'Conta não encontrada.' };
+
+  const valid = await bcrypt.compare(data.currentPassword, row.passwordHash);
+  if (!valid) return { ok: false, error: 'Senha atual incorreta.' };
+  if (data.newPassword.length < 8) return { ok: false, error: 'A nova senha deve ter ao menos 8 caracteres.' };
+
+  const passwordHash = await bcrypt.hash(data.newPassword, 12);
+  await db.update(platformAdmins).set({ passwordHash }).where(eq(platformAdmins.id, admin.id));
+  return { ok: true };
+}
