@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { PaymentIcon } from 'react-svg-credit-card-payment-icons';
 import { createPublicCheckoutCharge, validatePublicCoupon } from '@/lib/actions';
 
 type BillingType = 'PIX' | 'BOLETO' | 'CREDIT_CARD';
@@ -283,7 +284,7 @@ export default function CheckoutScreen({
                 selected={billingType === 'CREDIT_CARD'}
                 onClick={() => setBillingType('CREDIT_CARD')}
                 label="Cartão de Crédito"
-                rightSlot={<BrandBadges />}
+                rightSlot={<CardBrands />}
               >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
                   <label className="field-group">
@@ -333,6 +334,8 @@ export default function CheckoutScreen({
               />
             )}
           </div>
+
+          <AsaasNote />
         </Section>
 
         <button type="submit" disabled={pending} className="btn btn-accent btn-lg" style={{ justifyContent: 'center', gap: 8 }}>
@@ -341,7 +344,7 @@ export default function CheckoutScreen({
         </button>
 
         <div className="muted" style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.6 }}>
-          Pagamento processado por Asaas com criptografia ponta a ponta.
+          Pagamento processado por <strong>Asaas</strong> com criptografia ponta a ponta.
         </div>
       </div>
 
@@ -482,31 +485,52 @@ function MethodCard({
   );
 }
 
-function BrandBadges() {
-  const brands: Array<[string, string, string]> = [
-    ['VISA', '#1A1F71', '#fff'],
-    ['MC', '#EB001B', '#fff'],
-    ['AMEX', '#006FCF', '#fff'],
-    ['ELO', '#FFCB05', '#000'],
-  ];
+function CardBrands() {
   return (
-    <div className="row" style={{ gap: 4 }}>
-      {brands.map(([name, bg, fg]) => (
-        <span
-          key={name}
-          style={{
-            background: bg,
-            color: fg,
-            fontSize: 9,
-            fontWeight: 700,
-            padding: '3px 6px',
-            borderRadius: 3,
-            letterSpacing: '0.04em',
-          }}
-        >
-          {name}
-        </span>
-      ))}
+    <div className="row" style={{ gap: 5, alignItems: 'center' }}>
+      <PaymentIcon type="Visa" format="flatRounded" width={34} />
+      <PaymentIcon type="Mastercard" format="flatRounded" width={34} />
+      <PaymentIcon type="Amex" format="flatRounded" width={34} />
+      <PaymentIcon type="Elo" format="flatRounded" width={34} />
+    </div>
+  );
+}
+
+function AsaasNote() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 9,
+        padding: '11px 13px',
+        marginTop: 4,
+        borderRadius: 8,
+        background: 'color-mix(in oklab, var(--accent) 7%, transparent)',
+        border: '1px solid color-mix(in oklab, var(--accent) 22%, transparent)',
+        fontSize: 12,
+        lineHeight: 1.55,
+      }}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flexShrink: 0, marginTop: 1 }}
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      </svg>
+      <div>
+        O pagamento é processado pela <strong>Asaas</strong>, nossa parceira oficial de
+        pagamentos. A cobrança aparecerá identificada como <strong>“Asaas”</strong> na
+        fatura do seu cartão ou no seu extrato bancário — é normal e totalmente seguro.
+      </div>
     </div>
   );
 }
