@@ -7,6 +7,7 @@ import { DEFAULT_LGPD_TERMS } from '@/lib/lgpd-default';
 
 type Props = {
   initial: Record<string, string>;
+  secretsSet: Record<string, boolean>;
   bunnyEnv: { libraryId: string; cdnHostname: string; configured: boolean };
   messagingEnv: {
     brevoApiKey: boolean;
@@ -43,7 +44,7 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
   );
 }
 
-export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Props) {
+export default function SettingsClient({ initial, secretsSet, bunnyEnv, messagingEnv }: Props) {
   const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd'>('brand');
   const [zapiCheck, setZapiCheck] = useState<{ loading: boolean; connected?: boolean; error?: string }>({ loading: false });
 
@@ -138,8 +139,8 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
     setTimeout(() => setSaved(null), 2500);
   }
 
-  const pandaConfigured = !!(pandaApiKey && pandaPlayerId);
-  const asaasConfigured = !!asaasApiKey;
+  const pandaConfigured = !!((pandaApiKey || secretsSet['panda_api_key']) && pandaPlayerId);
+  const asaasConfigured = !!(asaasApiKey || secretsSet['asaas_api_key']);
 
   return (
     <div>
@@ -377,7 +378,7 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
                   type="password"
                   value={pandaApiKey}
                   onChange={(e) => setPandaApiKey(e.target.value)}
-                  placeholder="Sua API Key do Panda Video"
+                  placeholder={secretsSet['panda_api_key'] ? '•••••••• preenchida — digite para substituir' : 'Sua API Key do Panda Video'}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
                 />
                 <p className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
@@ -464,7 +465,9 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
                   type="password"
                   value={asaasApiKey}
                   onChange={(e) => setAsaasApiKey(e.target.value)}
-                  placeholder={asaasEnv === 'sandbox' ? '$aact_... (chave sandbox)' : '$aact_... (chave produção)'}
+                  placeholder={secretsSet['asaas_api_key']
+                    ? '•••••••• preenchida — digite para substituir'
+                    : asaasEnv === 'sandbox' ? '$aact_... (chave sandbox)' : '$aact_... (chave produção)'}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
                 />
                 <p className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
@@ -480,7 +483,7 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
                   type="password"
                   value={asaasWebhookSecret}
                   onChange={(e) => setAsaasWebhookSecret(e.target.value)}
-                  placeholder="O mesmo token configurado no painel da Asaas"
+                  placeholder={secretsSet['asaas_webhook_secret'] ? '•••••••• preenchido — digite para substituir' : 'O mesmo token configurado no painel da Asaas'}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
                 />
                 <p className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>

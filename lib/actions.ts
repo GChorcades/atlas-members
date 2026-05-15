@@ -534,8 +534,12 @@ export async function adminUpdateLessonTitle(lessonId: string, title: string) {
 export async function saveSettings(data: Record<string, string>) {
   const session = await getSession();
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  // Chaves sensíveis: o cliente envia em branco quando não foram alteradas —
+  // nesse caso, preserva o valor já gravado em vez de apagá-lo.
+  const SECRET_KEYS = new Set(['asaas_api_key', 'asaas_webhook_secret', 'panda_api_key']);
   const tenantId = await getTenantId();
   for (const [key, value] of Object.entries(data)) {
+    if (SECRET_KEYS.has(key) && !value.trim()) continue;
     await db.insert(settings).values({ tenantId, key, value, updatedAt: new Date() })
       .onConflictDoUpdate({ target: [settings.tenantId, settings.key], set: { value, updatedAt: new Date() } });
   }
