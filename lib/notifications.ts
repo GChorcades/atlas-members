@@ -33,7 +33,7 @@ function baseLayout(appName: string, title: string, body: string): string {
 }
 
 type User = { name: string; email: string; phone?: string | null };
-type TenantOverride = { name: string; slug: string; customDomain?: string | null };
+type TenantOverride = { id: string; name: string; slug: string; customDomain?: string | null };
 
 export async function notifyWelcome(user: User, tempPassword?: string) {
   const ctx = await getTenantEmail();
@@ -103,7 +103,7 @@ export async function notifyPaymentConfirmed(
   tenant?: TenantOverride,
 ) {
   // O webhook do Asaas não tem host — recebe o tenant explicitamente.
-  const ctx: TenantEmail = tenant ? tenantEmailFrom(tenant) : await getTenantEmail();
+  const ctx: TenantEmail = tenant ? await tenantEmailFrom(tenant) : await getTenantEmail();
   const valueFmt = args.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const title = 'Pagamento confirmado';
   const html = baseLayout(

@@ -112,6 +112,10 @@ export default function SettingsClient({ initial, secretsSet, bunnyEnv, messagin
   );
   const [asaasWebhookSecret, setAsaasWebhookSecret] = useState(initial['asaas_webhook_secret'] ?? '');
 
+  // Brevo — remetente
+  const [brevoSenderName, setBrevoSenderName] = useState(initial['brevo_sender_name'] ?? '');
+  const [brevoSenderEmail, setBrevoSenderEmail] = useState(initial['brevo_sender_email'] ?? '');
+
   // LGPD
   const [lgpdTerms, setLgpdTerms] = useState(initial['lgpd_terms'] || DEFAULT_LGPD_TERMS);
 
@@ -534,13 +538,39 @@ export default function SettingsClient({ initial, secretsSet, bunnyEnv, messagin
                 <StatusBadge ok={messagingEnv.brevoApiKey} label="API key" />
                 <StatusBadge ok={!!messagingEnv.brevoSenderEmail} label="Remetente" />
               </div>
-              <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div><span className="muted">Remetente:</span> {messagingEnv.brevoSenderName || '—'} {messagingEnv.brevoSenderEmail ? `<${messagingEnv.brevoSenderEmail}>` : ''}</div>
+              <div className="field-group">
+                <label className="field-label">Nome do remetente</label>
+                <input
+                  className="input-field"
+                  value={brevoSenderName}
+                  onChange={(e) => setBrevoSenderName(e.target.value)}
+                  placeholder={messagingEnv.brevoSenderName || 'Nome exibido como remetente'}
+                />
               </div>
-              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-                Configurado por variáveis de ambiente (<code>BREVO_API_KEY</code>, <code>BREVO_SENDER_EMAIL</code>, <code>BREVO_SENDER_NAME</code>) na Vercel.
-                O e-mail remetente precisa estar verificado no painel do Brevo.
-              </p>
+              <div className="field-group">
+                <label className="field-label">E-mail do remetente</label>
+                <input
+                  className="input-field"
+                  type="email"
+                  value={brevoSenderEmail}
+                  onChange={(e) => setBrevoSenderEmail(e.target.value)}
+                  placeholder={messagingEnv.brevoSenderEmail || 'remetente@seudominio.com'}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
+                />
+                <p className="muted" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>
+                  O domínio do e-mail precisa estar <strong>autenticado no painel do Brevo</strong>, senão o envio falha. A <code>BREVO_API_KEY</code> continua vindo de variável de ambiente.
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-accent btn-sm"
+                  onClick={() => handleSave('messaging', { brevo_sender_name: brevoSenderName, brevo_sender_email: brevoSenderEmail })}
+                  disabled={saving === 'messaging'}
+                >
+                  {saved === 'messaging' ? <><Icon name="check" size={14} /> Salvo!</> : saving === 'messaging' ? 'Salvando…' : <><Icon name="check" size={14} /> Salvar remetente</>}
+                </button>
+              </div>
 
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
                 <div className="field-label" style={{ marginBottom: 8 }}>Enviar e-mail de teste</div>

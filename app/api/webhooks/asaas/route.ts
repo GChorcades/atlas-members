@@ -185,7 +185,7 @@ export async function POST(req: Request) {
       if (event !== 'SUBSCRIPTION_RENEWED') {
         try {
           const [tenantRow] = await db
-            .select({ name: tenants.name, slug: tenants.slug, customDomain: tenants.customDomain })
+            .select({ id: tenants.id, name: tenants.name, slug: tenants.slug, customDomain: tenants.customDomain })
             .from(tenants)
             .where(eq(tenants.id, tenantId))
             .limit(1);
