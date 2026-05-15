@@ -4,16 +4,18 @@ import { db } from '@/db';
 import { courses, modules, lessons, courseTags, enrollments, lessonProgress } from '@/db/schema';
 import { eq, and, asc, sql, inArray } from 'drizzle-orm';
 import { parseDurationToSeconds, formatDurationFromSeconds } from '@/lib/course-stats';
+import { getTenantId } from '@/lib/tenant';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const [course] = await db.select().from(courses).where(eq(courses.id, id)).limit(1);
+  const tenantId = await getTenantId();
+  const [course] = await db.select().from(courses).where(and(eq(courses.tenantId, tenantId), eq(courses.id, id))).limit(1);
   if (!course) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const courseModules = await db.select().from(modules).where(eq(modules.courseId, id)).orderBy(asc(modules.position));
+  const courseModules = await db.select().from(modules).where(and(eq(modules.tenantId, tenantId), eq(modules.courseId, id))).orderBy(asc(modules.position));
   const moduleIds = courseModules.map((m) => m.id);
 
   const isAdmin = session.user.role === 'admin';
@@ -23,8 +25,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         .from(lessons)
         .where(
           isAdmin
-            ? inArray(lessons.moduleId, moduleIds)
-            : and(inArray(lessons.moduleId, moduleIds), eq(lessons.published, true))
+            ? and(eq(lessons.tenantId, tenantId), inArray(lessons.moduleId, moduleIds))
+            : and(eq(lessons.tenantId, tenantId), inArray(lessons.moduleId, moduleIds), eq(lessons.published, true))
         )
         .orderBy(asc(lessons.position))
     : [];
@@ -34,18 +36,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     lessonsByModule.set(mod.id, allLessonsRaw.filter((l) => l.moduleId === mod.id));
   }
 
-  const tags = await db.select({ tag: courseTags.tag }).from(courseTags).where(eq(courseTags.courseId, id));
+  const tags = await db.select({ tag: courseTags.tag }).from(courseTags).where(and(eq(courseTags.tenantId, tenantId), eq(courseTags.courseId, id)));
 
   const [enrollment] = await db
     .select()
     .from(enrollments)
-    .where(and(eq(enrollments.userId, session.user.id), eq(enrollments.courseId, id)))
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, session.user.id), eq(enrollments.courseId, id)))
     .limit(1);
 
   const flatLessonIds = courseModules.flatMap((m) => (lessonsByModule.get(m.id) ?? []).map((l) => l.id));
 
   const progressRows = flatLessonIds.length > 0
-    ? await db.select().from(lessonProgress).where(and(eq(lessonProgress.userId, session.user.id)))
+    ? await db.select().from(lessonProgress).where(and(eq(lessonProgress.tenantId, tenantId), eq(lessonProgress.userId, session.user.id)))
     : [];
 
   const doneSet = new Set(progressRows.filter((p) => p.done).map((p) => p.lessonId));
@@ -60,7 +62,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const [studentRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(enrollments)
-    .where(eq(enrollments.courseId, id));
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.courseId, id)));
   const studentCount = Number(studentRow?.count ?? 0);
 
   const result = {

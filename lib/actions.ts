@@ -10,6 +10,7 @@ import { nanoid } from 'nanoid';
 import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/lib/brevo';
 import { sendWhatsApp } from '@/lib/zapi';
+import { getTenantId } from '@/lib/tenant';
 
 async function getSession() {
   const session = await auth();
@@ -27,6 +28,7 @@ export async function enrollInCourse(courseId: string) {
   if (existing.length) return;
   await db.insert(enrollments).values({
     id: nanoid(),
+    tenantId: await getTenantId(),
     userId: session.user.id,
     courseId,
   });
@@ -39,7 +41,7 @@ export async function markLessonDone(lessonId: string, done: boolean) {
 
   await db
     .insert(lessonProgress)
-    .values({ userId, lessonId, done, completedAt: done ? new Date() : null })
+    .values({ tenantId: await getTenantId(), userId, lessonId, done, completedAt: done ? new Date() : null })
     .onConflictDoUpdate({
       target: [lessonProgress.userId, lessonProgress.lessonId],
       set: { done, completedAt: done ? new Date() : null },
@@ -102,7 +104,7 @@ export async function updateWatchedSeconds(lessonId: string, watchedSeconds: num
   const clamped = Math.max(0, Math.min(watchedSeconds, 86400));
   await db
     .insert(lessonProgress)
-    .values({ userId: session.user.id, lessonId, watchedSeconds: clamped })
+    .values({ tenantId: await getTenantId(), userId: session.user.id, lessonId, watchedSeconds: clamped })
     .onConflictDoUpdate({
       target: [lessonProgress.userId, lessonProgress.lessonId],
       set: { watchedSeconds: clamped },
@@ -113,6 +115,7 @@ export async function addNote(lessonId: string, text: string, timestamp?: string
   const session = await getSession();
   await db.insert(notes).values({
     id: nanoid(),
+    tenantId: await getTenantId(),
     userId: session.user.id,
     lessonId,
     text,
@@ -130,6 +133,7 @@ export async function addComment(lessonId: string, text: string, parentId?: stri
   const session = await getSession();
   await db.insert(comments).values({
     id: nanoid(),
+    tenantId: await getTenantId(),
     userId: session.user.id,
     lessonId,
     text,
@@ -170,6 +174,7 @@ export async function adminCreateCourse(data: {
   const id = nanoid();
   await db.insert(courses).values({
     id,
+    tenantId: await getTenantId(),
     title: data.title,
     subtitle: data.subtitle,
     description: data.description,
@@ -257,6 +262,7 @@ export async function adminCreateLesson(moduleId: string, data: { title: string;
   const id = nanoid();
   await db.insert(lessons).values({
     id,
+    tenantId: await getTenantId(),
     moduleId,
     title: data.title,
     type: data.type ?? 'video',
@@ -340,6 +346,7 @@ export async function adminAddEnrollment(userId: string, courseId: string, expir
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
   await db.insert(enrollments).values({
     id: nanoid(),
+    tenantId: await getTenantId(),
     userId,
     courseId,
     expiresAt: expiresAt ?? null,
@@ -377,9 +384,10 @@ export async function adminSetEnrollments(userId: string, courseIds: string[]) {
   }
 
   // Add new
+  const tenantId = await getTenantId();
   for (const courseId of newSet) {
     if (!existingSet.has(courseId)) {
-      await db.insert(enrollments).values({ id: nanoid(), userId, courseId });
+      await db.insert(enrollments).values({ id: nanoid(), tenantId, userId, courseId });
     }
   }
 
@@ -394,6 +402,7 @@ export async function adminCreateCohort(data: { name: string; description?: stri
   const id = nanoid();
   await db.insert(cohorts).values({
     id,
+    tenantId: await getTenantId(),
     name: data.name,
     description: data.description,
     color: data.color,
@@ -427,7 +436,8 @@ export async function adminSetCohortCourses(cohortId: string, courseIds: string[
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
   await db.delete(cohortCourses).where(eq(cohortCourses.cohortId, cohortId));
   if (courseIds.length > 0) {
-    await db.insert(cohortCourses).values(courseIds.map((courseId) => ({ cohortId, courseId })));
+    const tenantId = await getTenantId();
+    await db.insert(cohortCourses).values(courseIds.map((courseId) => ({ tenantId, cohortId, courseId })));
   }
   revalidatePath('/admin/cohorts');
 }
@@ -437,7 +447,8 @@ export async function adminSetCohortMembers(cohortId: string, userIds: string[])
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
   await db.delete(cohortMembers).where(eq(cohortMembers.cohortId, cohortId));
   if (userIds.length > 0) {
-    await db.insert(cohortMembers).values(userIds.map((userId) => ({ cohortId, userId })));
+    const tenantId = await getTenantId();
+    await db.insert(cohortMembers).values(userIds.map((userId) => ({ tenantId, cohortId, userId })));
   }
   revalidatePath('/admin/cohorts');
 }
@@ -472,6 +483,7 @@ export async function adminCreateModule(courseId: string, title: string) {
   const id = nanoid();
   await db.insert(modules).values({
     id,
+    tenantId: await getTenantId(),
     courseId,
     title,
     position: existing.length,
@@ -521,9 +533,10 @@ export async function adminUpdateLessonTitle(lessonId: string, title: string) {
 export async function saveSettings(data: Record<string, string>) {
   const session = await getSession();
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  const tenantId = await getTenantId();
   for (const [key, value] of Object.entries(data)) {
-    await db.insert(settings).values({ key, value, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
+    await db.insert(settings).values({ tenantId, key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: [settings.tenantId, settings.key], set: { value, updatedAt: new Date() } });
   }
   revalidatePath('/admin/settings');
 }
@@ -582,6 +595,7 @@ export async function adminCreateAsaasCharge(userId: string, data: {
   const session = await getSession();
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
 
+  const tenantId = await getTenantId();
   const customerId = await ensureAsaasCustomer(userId);
 
   const useInstallments = data.installmentCount && data.installmentCount > 1 && data.billingType === 'CREDIT_CARD';
@@ -606,6 +620,7 @@ export async function adminCreateAsaasCharge(userId: string, data: {
     for (const p of list.data) {
       await db.insert(payments).values({
         id: nanoid(),
+        tenantId,
         userId,
         asaasPaymentId: p.id,
         courseId: data.courseId,
@@ -624,6 +639,7 @@ export async function adminCreateAsaasCharge(userId: string, data: {
   } else {
     const insertData: typeof payments.$inferInsert = {
       id: nanoid(),
+      tenantId,
       userId,
       asaasPaymentId: payment.id,
       courseId: data.courseId,
@@ -678,6 +694,7 @@ export async function adminCreateAsaasSubscription(userId: string, data: {
 
   await db.insert(subscriptions).values({
     id: nanoid(),
+    tenantId: await getTenantId(),
     userId,
     asaasSubscriptionId: sub.id,
     plan: data.plan,
@@ -796,6 +813,7 @@ export async function adminUpsertCheckout(data: {
   } else {
     await db.insert(checkouts).values({
       id: nanoid(),
+      tenantId: await getTenantId(),
       courseId: data.courseId,
       slug,
       active: data.active,
@@ -899,7 +917,7 @@ export async function adminUpsertOffer(data: {
     }).where(eq(checkoutOffers.id, data.id));
   } else {
     await db.insert(checkoutOffers).values({
-      id: nanoid(), checkoutId: data.checkoutId, name: data.name.trim(), slug, price: data.price, active: data.active,
+      id: nanoid(), tenantId: await getTenantId(), checkoutId: data.checkoutId, name: data.name.trim(), slug, price: data.price, active: data.active,
     });
   }
   revalidatePath('/admin/checkouts');
@@ -936,7 +954,7 @@ export async function adminCreateCoupon(data: {
 
   const expiresAt = new Date(Date.now() + data.validDays * 24 * 60 * 60 * 1000);
   await db.insert(coupons).values({
-    id: nanoid(), checkoutId: data.checkoutId, code,
+    id: nanoid(), tenantId: await getTenantId(), checkoutId: data.checkoutId, code,
     discountType: data.discountType, discountValue: data.discountValue, expiresAt, active: true,
   });
   revalidatePath('/admin/checkouts');
@@ -956,16 +974,20 @@ function applyDiscount(price: number, type: 'percent' | 'fixed', value: number):
   return Math.max(0, Math.round(result * 100) / 100);
 }
 
-/** Resolve um slug que pode ser de checkout ou de oferta. */
+/** Resolve um slug que pode ser de checkout ou de oferta — escopado ao tenant atual. */
 async function resolveCheckoutSlug(slug: string) {
-  const [offer] = await db.select().from(checkoutOffers).where(eq(checkoutOffers.slug, slug)).limit(1);
+  const tenantId = await getTenantId();
+  const [offer] = await db.select().from(checkoutOffers)
+    .where(and(eq(checkoutOffers.tenantId, tenantId), eq(checkoutOffers.slug, slug))).limit(1);
   if (offer) {
     if (!offer.active) throw new Error('Oferta indisponível.');
-    const [co] = await db.select().from(checkouts).where(eq(checkouts.id, offer.checkoutId)).limit(1);
+    const [co] = await db.select().from(checkouts)
+      .where(and(eq(checkouts.tenantId, tenantId), eq(checkouts.id, offer.checkoutId))).limit(1);
     if (!co) throw new Error('Checkout indisponível.');
     return { checkout: co, price: offer.price, offerName: offer.name };
   }
-  const [co] = await db.select().from(checkouts).where(eq(checkouts.slug, slug)).limit(1);
+  const [co] = await db.select().from(checkouts)
+    .where(and(eq(checkouts.tenantId, tenantId), eq(checkouts.slug, slug))).limit(1);
   if (!co) throw new Error('Checkout indisponível.');
   return { checkout: co, price: co.price, offerName: null as string | null };
 }
@@ -1009,6 +1031,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
     ccv: string;
   };
 }): Promise<{ ok: true; paymentId: string }> {
+  const tenantId = await getTenantId();
   const resolved = await resolveCheckoutSlug(slug);
   const co = resolved.checkout;
   if (!co.active) throw new Error('Checkout indisponível.');
@@ -1037,12 +1060,14 @@ export async function createPublicCheckoutCharge(slug: string, data: {
     : 1;
 
   // Find or create user
-  let [user] = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
+  let [user] = await db.select().from(users)
+    .where(and(eq(users.tenantId, tenantId), eq(users.email, data.email))).limit(1);
   if (!user) {
     const hash = await bcrypt.hash(DEFAULT_STUDENT_PASSWORD, 12);
     const userId = nanoid();
     await db.insert(users).values({
       id: userId,
+      tenantId,
       name: data.name,
       email: data.email,
       passwordHash: hash,
@@ -1128,6 +1153,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
       if (firstId === null) firstId = rowId;
       await db.insert(payments).values({
         id: rowId,
+        tenantId,
         userId: user.id,
         asaasPaymentId: p.id,
         courseId: co.courseId,
@@ -1147,6 +1173,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
   } else {
     const insertData: typeof payments.$inferInsert = {
       id: paymentRowId,
+      tenantId,
       userId: user.id,
       asaasPaymentId: payment.id,
       courseId: co.courseId,
@@ -1178,6 +1205,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
     if (!existing.length) {
       await db.insert(enrollments).values({
         id: nanoid(),
+        tenantId,
         userId: user.id,
         courseId: co.courseId,
         active: true,

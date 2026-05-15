@@ -3,7 +3,8 @@ import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { lessons } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -16,10 +17,11 @@ export async function POST(req: Request) {
   const { lessonId } = (await req.json()) as { lessonId: string };
   if (!lessonId) return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 });
 
+  const tenantId = await getTenantId();
   const [lesson] = await db
     .select({ title: lessons.title, transcript: lessons.transcript })
     .from(lessons)
-    .where(eq(lessons.id, lessonId))
+    .where(and(eq(lessons.tenantId, tenantId), eq(lessons.id, lessonId)))
     .limit(1);
   if (!lesson) return NextResponse.json({ error: 'Aula não encontrada' }, { status: 404 });
   if (!lesson.transcript?.trim()) {
@@ -57,6 +59,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Não foi possível gerar capítulos.' }, { status: 502 });
   }
 
-  await db.update(lessons).set({ chapters: JSON.stringify(chapters) }).where(eq(lessons.id, lessonId));
+  await db.update(lessons).set({ chapters: JSON.stringify(chapters) }).where(and(eq(lessons.tenantId, tenantId), eq(lessons.id, lessonId)));
   return NextResponse.json({ chapters });
 }

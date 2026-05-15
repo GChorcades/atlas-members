@@ -2,28 +2,33 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { db } from '@/db';
 import { courses, enrollments, checkouts } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
 import { getCourseStats } from '@/lib/course-stats';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function CatalogPage() {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
-  const allCourses = await db.select().from(courses).where(eq(courses.published, true)).orderBy(desc(courses.createdAt));
+  const tenantId = await getTenantId();
+
+  const allCourses = await db.select().from(courses)
+    .where(and(eq(courses.tenantId, tenantId), eq(courses.published, true)))
+    .orderBy(desc(courses.createdAt));
 
   const userEnrollments = await db
     .select({ courseId: enrollments.courseId, progress: enrollments.progress })
     .from(enrollments)
-    .where(eq(enrollments.userId, session.user.id));
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, session.user.id)));
 
   const enrolledMap = new Map(userEnrollments.map((e) => [e.courseId, e.progress]));
 
   const activeCheckouts = await db
     .select({ courseId: checkouts.courseId, slug: checkouts.slug })
     .from(checkouts)
-    .where(eq(checkouts.active, true));
+    .where(and(eq(checkouts.tenantId, tenantId), eq(checkouts.active, true)));
   const checkoutMap = new Map(activeCheckouts.map((c) => [c.courseId, c.slug]));
 
   const myCourses = allCourses.filter((c) => enrolledMap.has(c.id));

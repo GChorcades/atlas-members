@@ -1,9 +1,10 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
+import { getTenantId } from '@/lib/tenant';
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -22,7 +23,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'A nova senha deve ter no mínimo 6 caracteres' }, { status: 400 });
   }
 
-  const [user] = await db.select().from(users).where(eq(users.id, session.user.id)).limit(1);
+  const tenantId = await getTenantId();
+  const [user] = await db.select().from(users).where(and(eq(users.tenantId, tenantId), eq(users.id, session.user.id))).limit(1);
   if (!user || !user.passwordHash) {
     return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
   }
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
   await db
     .update(users)
     .set({ passwordHash: newHash, updatedAt: new Date() })
-    .where(eq(users.id, session.user.id));
+    .where(and(eq(users.tenantId, tenantId), eq(users.id, session.user.id)));
 
   return NextResponse.json({ ok: true });
 }

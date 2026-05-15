@@ -8,6 +8,7 @@ import {
   timestamp,
   pgEnum,
   primaryKey,
+  unique,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
@@ -47,7 +48,7 @@ export const users = pgTable('users', {
   id: text('id').primaryKey(), // Neon Auth managed
   tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
+  email: varchar('email', { length: 255 }).notNull(),
   avatarUrl: text('avatar_url'),
   role: userRoleEnum('role').notNull().default('student'),
   passwordHash: text('password_hash'),
@@ -63,7 +64,7 @@ export const users = pgTable('users', {
   termsAcceptedAt: timestamp('terms_accepted_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [unique('users_tenant_email_unique').on(t.tenantId, t.email)]);
 
 // ─── Courses ──────────────────────────────────────────────────────────────────
 
@@ -239,10 +240,10 @@ export const trailCourses = pgTable('trail_courses', {
 
 export const settings = pgTable('settings', {
   tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
-  key: varchar('key', { length: 100 }).primaryKey(),
+  key: varchar('key', { length: 100 }).notNull(),
   value: text('value'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [primaryKey({ columns: [t.tenantId, t.key] })]);
 
 // ─── Payments & Subscriptions (Asaas) ────────────────────────────────────────
 

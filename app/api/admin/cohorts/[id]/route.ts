@@ -1,8 +1,9 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { cohorts, cohortCourses, cohortMembers, courses, users } from '@/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { getTenantId } from '@/lib/tenant';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -11,15 +12,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const { id } = await params;
+  const tenantId = await getTenantId();
 
-  const [cohort] = await db.select().from(cohorts).where(eq(cohorts.id, id)).limit(1);
+  const [cohort] = await db.select().from(cohorts).where(and(eq(cohorts.tenantId, tenantId), eq(cohorts.id, id))).limit(1);
   if (!cohort) return NextResponse.json({ error: 'Turma não encontrada' }, { status: 404 });
 
-  const linkedCourses = await db.select({ courseId: cohortCourses.courseId }).from(cohortCourses).where(eq(cohortCourses.cohortId, id));
-  const linkedMembers = await db.select({ userId: cohortMembers.userId, joinedAt: cohortMembers.joinedAt }).from(cohortMembers).where(eq(cohortMembers.cohortId, id));
+  const linkedCourses = await db.select({ courseId: cohortCourses.courseId }).from(cohortCourses).where(and(eq(cohortCourses.tenantId, tenantId), eq(cohortCourses.cohortId, id)));
+  const linkedMembers = await db.select({ userId: cohortMembers.userId, joinedAt: cohortMembers.joinedAt }).from(cohortMembers).where(and(eq(cohortMembers.tenantId, tenantId), eq(cohortMembers.cohortId, id)));
 
-  const allCourses = await db.select({ id: courses.id, title: courses.title, published: courses.published }).from(courses).orderBy(asc(courses.title));
-  const allUsers = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users).orderBy(asc(users.name));
+  const allCourses = await db.select({ id: courses.id, title: courses.title, published: courses.published }).from(courses).where(eq(courses.tenantId, tenantId)).orderBy(asc(courses.title));
+  const allUsers = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users).where(eq(users.tenantId, tenantId)).orderBy(asc(users.name));
 
   const courseSet = new Set(linkedCourses.map((c) => c.courseId));
   const memberSet = new Set(linkedMembers.map((m) => m.userId));

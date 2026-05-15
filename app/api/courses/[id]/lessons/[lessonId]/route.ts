@@ -3,23 +3,25 @@ import { auth } from '@/auth';
 import { db } from '@/db';
 import { courses, modules, lessons, enrollments, lessonProgress, notes as notesTable, comments as commentsTable, users, settings, materials } from '@/db/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; lessonId: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id: courseId, lessonId } = await params;
+  const tenantId = await getTenantId();
 
-  const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId)).limit(1);
+  const [lesson] = await db.select().from(lessons).where(and(eq(lessons.tenantId, tenantId), eq(lessons.id, lessonId))).limit(1);
   if (!lesson) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const [mod] = await db.select().from(modules).where(eq(modules.id, lesson.moduleId)).limit(1);
-  const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
+  const [mod] = await db.select().from(modules).where(and(eq(modules.tenantId, tenantId), eq(modules.id, lesson.moduleId))).limit(1);
+  const [course] = await db.select().from(courses).where(and(eq(courses.tenantId, tenantId), eq(courses.id, courseId))).limit(1);
 
   const [enrollment] = await db
     .select()
     .from(enrollments)
-    .where(and(eq(enrollments.userId, session.user.id), eq(enrollments.courseId, courseId)))
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, session.user.id), eq(enrollments.courseId, courseId)))
     .limit(1);
 
   if (!enrollment && session.user.role !== 'admin') {
@@ -29,21 +31,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const [progress] = await db
     .select()
     .from(lessonProgress)
-    .where(and(eq(lessonProgress.userId, session.user.id), eq(lessonProgress.lessonId, lessonId)))
+    .where(and(eq(lessonProgress.tenantId, tenantId), eq(lessonProgress.userId, session.user.id), eq(lessonProgress.lessonId, lessonId)))
     .limit(1);
 
   // Build outline
-  const courseModules = await db.select().from(modules).where(eq(modules.courseId, courseId)).orderBy(asc(modules.position));
+  const courseModules = await db.select().from(modules).where(and(eq(modules.tenantId, tenantId), eq(modules.courseId, courseId))).orderBy(asc(modules.position));
   const allLessons = await db
     .select()
     .from(lessons)
-    .where(inArray(lessons.moduleId, courseModules.map((m) => m.id)))
+    .where(and(eq(lessons.tenantId, tenantId), inArray(lessons.moduleId, courseModules.map((m) => m.id))))
     .orderBy(asc(lessons.position));
 
   const allProgress = await db
     .select()
     .from(lessonProgress)
-    .where(eq(lessonProgress.userId, session.user.id));
+    .where(and(eq(lessonProgress.tenantId, tenantId), eq(lessonProgress.userId, session.user.id)));
 
   const doneSet = new Set(allProgress.filter((p) => p.done).map((p) => p.lessonId));
 
@@ -69,20 +71,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .map((l) => ({ id: l.id, title: l.title, duration: l.duration, type: l.type, done: doneSet.has(l.id) })),
   }));
 
-  const [pandaSetting] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'panda_player_id')).limit(1);
+  const [pandaSetting] = await db.select({ value: settings.value }).from(settings).where(and(eq(settings.tenantId, tenantId), eq(settings.key, 'panda_player_id'))).limit(1);
 
   // Notes
   const userNotes = await db
     .select()
     .from(notesTable)
-    .where(and(eq(notesTable.userId, session.user.id), eq(notesTable.lessonId, lessonId)))
+    .where(and(eq(notesTable.tenantId, tenantId), eq(notesTable.userId, session.user.id), eq(notesTable.lessonId, lessonId)))
     .orderBy(asc(notesTable.createdAt));
 
   // Materials
   const lessonMaterials = await db
     .select()
     .from(materials)
-    .where(eq(materials.lessonId, lessonId))
+    .where(and(eq(materials.tenantId, tenantId), eq(materials.lessonId, lessonId)))
     .orderBy(asc(materials.createdAt));
 
   // Comments
@@ -90,7 +92,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     .select({ comment: commentsTable, user: users })
     .from(commentsTable)
     .innerJoin(users, eq(commentsTable.userId, users.id))
-    .where(and(eq(commentsTable.lessonId, lessonId), eq(commentsTable.status, 'approved')))
+    .where(and(eq(commentsTable.tenantId, tenantId), eq(commentsTable.lessonId, lessonId), eq(commentsTable.status, 'approved')))
     .orderBy(asc(commentsTable.createdAt));
 
   return NextResponse.json({

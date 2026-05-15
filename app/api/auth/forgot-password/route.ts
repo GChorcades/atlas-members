@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createResetToken } from '@/lib/reset-token';
+import { getTenantId } from '@/lib/tenant';
 import { notifyForgotPassword } from '@/lib/notifications';
 
 export async function POST(req: Request) {
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'E-mail inválido' }, { status: 400 });
   }
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const [user] = await db.select().from(users).where(and(eq(users.tenantId, await getTenantId()), eq(users.email, email))).limit(1);
 
   // Always return 200 to avoid email enumeration.
   if (user) {

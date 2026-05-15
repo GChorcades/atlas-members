@@ -1,8 +1,9 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { settings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { getTenantId } from '@/lib/tenant';
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
   }
 
-  const [apiKeySetting] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, 'panda_api_key')).limit(1);
+  const [apiKeySetting] = await db.select({ value: settings.value }).from(settings).where(and(eq(settings.tenantId, await getTenantId()), eq(settings.key, 'panda_api_key'))).limit(1);
   const apiKey = apiKeySetting?.value;
   if (!apiKey) {
     return NextResponse.json({ error: 'Panda API Key não configurada. Vá em Configurações → Players.' }, { status: 400 });

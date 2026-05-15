@@ -1,8 +1,9 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { getTenantId } from '@/lib/tenant';
 
 export async function POST() {
   const session = await auth();
@@ -13,7 +14,7 @@ export async function POST() {
   await db
     .update(users)
     .set({ termsAcceptedAt: new Date(), updatedAt: new Date() })
-    .where(eq(users.id, session.user.id));
+    .where(and(eq(users.tenantId, await getTenantId()), eq(users.id, session.user.id)));
 
   return NextResponse.json({ ok: true });
 }

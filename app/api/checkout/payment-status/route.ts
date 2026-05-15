@@ -47,11 +47,12 @@ export async function GET(req: Request) {
 
         if (isPaid(newStatus) && row.courseId) {
           const existing = await db.select().from(enrollments)
-            .where(and(eq(enrollments.userId, row.userId), eq(enrollments.courseId, row.courseId)))
+            .where(and(eq(enrollments.tenantId, row.tenantId), eq(enrollments.userId, row.userId), eq(enrollments.courseId, row.courseId)))
             .limit(1);
           if (!existing.length) {
             await db.insert(enrollments).values({
               id: nanoid(),
+              tenantId: row.tenantId,
               userId: row.userId,
               courseId: row.courseId,
               active: true,

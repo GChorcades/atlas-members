@@ -3,8 +3,9 @@ import { toFile } from 'openai';
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { lessons } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { getTenantId } from '@/lib/tenant';
 import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -62,7 +63,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ lesson
   const [lesson] = await db
     .select({ id: lessons.id, bunnyVideoId: lessons.bunnyVideoId })
     .from(lessons)
-    .where(eq(lessons.id, lessonId))
+    .where(and(eq(lessons.tenantId, await getTenantId()), eq(lessons.id, lessonId)))
     .limit(1);
   if (!lesson) return NextResponse.json({ error: 'Aula não encontrada' }, { status: 404 });
   if (!lesson.bunnyVideoId) {

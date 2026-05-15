@@ -1,19 +1,24 @@
 import { db } from '@/db';
 import { cohorts, cohortCourses, cohortMembers } from '@/db/schema';
 import { desc, sql, eq } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 import NewCohortButton from './new-cohort-button';
 import CohortsTable from './cohorts-table';
 
 export default async function AdminCohortsPage() {
-  const rows = await db.select().from(cohorts).orderBy(desc(cohorts.createdAt));
+  const tenantId = await getTenantId();
+  const rows = await db.select().from(cohorts)
+    .where(eq(cohorts.tenantId, tenantId)).orderBy(desc(cohorts.createdAt));
 
   const courseCounts = await db
     .select({ cohortId: cohortCourses.cohortId, count: sql<number>`count(*)` })
     .from(cohortCourses)
+    .where(eq(cohortCourses.tenantId, tenantId))
     .groupBy(cohortCourses.cohortId);
   const memberCounts = await db
     .select({ cohortId: cohortMembers.cohortId, count: sql<number>`count(*)` })
     .from(cohortMembers)
+    .where(eq(cohortMembers.tenantId, tenantId))
     .groupBy(cohortMembers.cohortId);
 
   const courseCountMap = new Map(courseCounts.map((c) => [c.cohortId, Number(c.count)]));

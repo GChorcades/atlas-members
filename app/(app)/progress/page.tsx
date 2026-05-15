@@ -2,9 +2,10 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { db } from '@/db';
 import { users, userAchievements, achievements } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
+import { getTenantId } from '@/lib/tenant';
 
 const ACTIVITY = [3,1,0,2,4,2,1, 0,2,3,2,1,0,0, 1,2,3,1,2,2,1, 2,3,4,2,1,0,1,
                   0,1,2,3,4,3,2, 2,2,3,3,2,1,2, 3,2,4,3,2,1,1, 1,2,3,2,3,2,1,
@@ -14,16 +15,19 @@ export default async function ProgressPage() {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
-  const [user] = await db.select().from(users).where(eq(users.id, session.user.id)).limit(1);
+  const tenantId = await getTenantId();
+
+  const [user] = await db.select().from(users)
+    .where(and(eq(users.tenantId, tenantId), eq(users.id, session.user.id))).limit(1);
 
   const userAchievs = await db
     .select({ achievement: achievements, earnedAt: userAchievements.earnedAt })
     .from(userAchievements)
     .innerJoin(achievements, eq(userAchievements.achievementId, achievements.id))
-    .where(eq(userAchievements.userId, session.user.id))
+    .where(and(eq(userAchievements.tenantId, tenantId), eq(userAchievements.userId, session.user.id)))
     .orderBy(desc(userAchievements.earnedAt));
 
-  const allAchievements = await db.select().from(achievements);
+  const allAchievements = await db.select().from(achievements).where(eq(achievements.tenantId, tenantId));
 
   const earnedIds = new Set(userAchievs.map((a) => a.achievement.id));
   const xpToNext = Math.max((user?.xp ?? 0) + 1220, 5500);

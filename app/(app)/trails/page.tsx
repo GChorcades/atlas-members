@@ -1,11 +1,16 @@
 import { db } from '@/db';
 import { trails, trailCourses, courses } from '@/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function TrailsPage() {
-  const allTrails = await db.select().from(trails).orderBy(asc(trails.position));
+  const tenantId = await getTenantId();
+
+  const allTrails = await db.select().from(trails)
+    .where(eq(trails.tenantId, tenantId))
+    .orderBy(asc(trails.position));
 
   const trailsWithCourses = await Promise.all(
     allTrails.map(async (trail) => {
@@ -13,7 +18,7 @@ export default async function TrailsPage() {
         .select({ course: courses })
         .from(trailCourses)
         .innerJoin(courses, eq(trailCourses.courseId, courses.id))
-        .where(eq(trailCourses.trailId, trail.id))
+        .where(and(eq(trailCourses.tenantId, tenantId), eq(trailCourses.trailId, trail.id)))
         .orderBy(asc(trailCourses.position));
       return { ...trail, courses: rows.map((r) => r.course) };
     }),

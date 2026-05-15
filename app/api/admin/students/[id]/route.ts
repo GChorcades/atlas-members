@@ -4,6 +4,7 @@ import { users, enrollments, courses, cohorts, cohortMembers, lessons, lessonPro
 import { eq, asc, sql, and, inArray, desc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getCourseStats } from '@/lib/course-stats';
+import { getTenantId } from '@/lib/tenant';
 
 function parseHHMMSSToSeconds(s: string | null): number {
   if (!s) return 0;
@@ -26,8 +27,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const { id } = await params;
+  const tenantId = await getTenantId();
 
-  const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  const [user] = await db.select().from(users).where(and(eq(users.tenantId, tenantId), eq(users.id, id))).limit(1);
   if (!user) return NextResponse.json({ error: 'Aluno não encontrado' }, { status: 404 });
 
   // Enrollments with course info
@@ -46,12 +48,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     })
     .from(enrollments)
     .innerJoin(courses, eq(enrollments.courseId, courses.id))
-    .where(eq(enrollments.userId, id));
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, id)));
 
   // All courses (for adding)
   const allCourses = await db
     .select({ id: courses.id, title: courses.title, published: courses.published, coverBg: courses.coverBg, coverImage: courses.coverImage, coverGlyph: courses.coverGlyph })
     .from(courses)
+    .where(eq(courses.tenantId, tenantId))
     .orderBy(asc(courses.title));
 
   // Cohorts
@@ -59,7 +62,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .select({ id: cohorts.id, name: cohorts.name, color: cohorts.color })
     .from(cohortMembers)
     .innerJoin(cohorts, eq(cohortMembers.cohortId, cohorts.id))
-    .where(eq(cohortMembers.userId, id));
+    .where(and(eq(cohortMembers.tenantId, tenantId), eq(cohortMembers.userId, id)));
 
   // Compute lessons done + watched time across enrolled courses
   const enrolledCourseIds = userEnrollments.map((e) => e.courseId);
@@ -78,6 +81,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
       .innerJoin(modules, eq(lessons.moduleId, modules.id))
       .where(and(
+        eq(lessonProgress.tenantId, tenantId),
         eq(lessonProgress.userId, id),
         eq(lessonProgress.done, true),
         inArray(modules.courseId, enrolledCourseIds),
@@ -94,7 +98,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .select({ duration: lessons.duration })
       .from(lessonProgress)
       .innerJoin(lessons, eq(lessonProgress.lessonId, lessons.id))
-      .where(and(eq(lessonProgress.userId, id), eq(lessonProgress.done, true)));
+      .where(and(eq(lessonProgress.tenantId, tenantId), eq(lessonProgress.userId, id), eq(lessonProgress.done, true)));
 
     for (const l of userLessons) {
       totalWatchedSeconds += parseHHMMSSToSeconds(l.duration);
@@ -113,13 +117,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const userPayments = await db
     .select()
     .from(payments)
-    .where(eq(payments.userId, id))
+    .where(and(eq(payments.tenantId, tenantId), eq(payments.userId, id)))
     .orderBy(desc(payments.dueDate));
 
   const userSubscriptions = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.userId, id))
+    .where(and(eq(subscriptions.tenantId, tenantId), eq(subscriptions.userId, id)))
     .orderBy(desc(subscriptions.createdAt));
 
   return NextResponse.json({

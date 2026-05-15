@@ -1,9 +1,10 @@
 import { db } from '@/db';
 import { payments, users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import PaymentPoller from './payment-poller';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function CheckoutSuccessPage({
   params,
@@ -16,10 +17,14 @@ export default async function CheckoutSuccessPage({
   const { p } = await searchParams;
   if (!p) notFound();
 
-  const [pay] = await db.select().from(payments).where(eq(payments.id, p)).limit(1);
+  const tenantId = await getTenantId();
+
+  const [pay] = await db.select().from(payments)
+    .where(and(eq(payments.tenantId, tenantId), eq(payments.id, p))).limit(1);
   if (!pay) notFound();
 
-  const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, pay.userId)).limit(1);
+  const [user] = await db.select({ email: users.email }).from(users)
+    .where(and(eq(users.tenantId, tenantId), eq(users.id, pay.userId))).limit(1);
 
   const isPaid = pay.status === 'received' || pay.status === 'confirmed';
   const isPix = pay.billingType === 'PIX';

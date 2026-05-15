@@ -1,9 +1,11 @@
 import { db } from '@/db';
 import { users, enrollments } from '@/db/schema';
-import { desc, sql } from 'drizzle-orm';
+import { desc, sql, eq } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 import StudentsTable from './students-table';
 
 export default async function AdminStudentsPage() {
+  const tenantId = await getTenantId();
   const allUsers = await db
     .select({
       id: users.id,
@@ -17,11 +19,13 @@ export default async function AdminStudentsPage() {
       createdAt: users.createdAt,
     })
     .from(users)
+    .where(eq(users.tenantId, tenantId))
     .orderBy(desc(users.createdAt));
 
   const enrollmentCounts = await db
     .select({ userId: enrollments.userId, count: sql<number>`count(*)` })
     .from(enrollments)
+    .where(eq(enrollments.tenantId, tenantId))
     .groupBy(enrollments.userId);
 
   const countMap = new Map(enrollmentCounts.map((e) => [e.userId, Number(e.count)]));

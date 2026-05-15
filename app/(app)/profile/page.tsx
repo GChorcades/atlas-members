@@ -2,29 +2,33 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { db } from '@/db';
 import { users, userAchievements, achievements, enrollments } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { Icon } from '@/components/icons';
 import PasswordForm from './password-form';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
-  const [user] = await db.select().from(users).where(eq(users.id, session.user.id)).limit(1);
+  const tenantId = await getTenantId();
+
+  const [user] = await db.select().from(users)
+    .where(and(eq(users.tenantId, tenantId), eq(users.id, session.user.id))).limit(1);
   if (!user) redirect('/login');
 
-  const allAchievs = await db.select().from(achievements);
+  const allAchievs = await db.select().from(achievements).where(eq(achievements.tenantId, tenantId));
   const earnedAchievs = await db
     .select({ achievement: achievements, earnedAt: userAchievements.earnedAt })
     .from(userAchievements)
     .innerJoin(achievements, eq(userAchievements.achievementId, achievements.id))
-    .where(eq(userAchievements.userId, session.user.id))
+    .where(and(eq(userAchievements.tenantId, tenantId), eq(userAchievements.userId, session.user.id)))
     .orderBy(desc(userAchievements.earnedAt));
 
   const enrollmentCount = await db
     .select()
     .from(enrollments)
-    .where(eq(enrollments.userId, session.user.id));
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, session.user.id)));
 
   const initials = user.name.split(' ').map((p) => p[0]).slice(0, 2).join('');
 

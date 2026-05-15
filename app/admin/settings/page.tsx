@@ -1,9 +1,12 @@
 import { db } from '@/db';
 import { settings } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 import SettingsClient from './settings-client';
 
 export default async function AdminSettingsPage() {
-  const rows = await db.select().from(settings);
+  const tenantId = await getTenantId();
+  const rows = await db.select().from(settings).where(eq(settings.tenantId, tenantId));
   const cfg = Object.fromEntries(rows.map((r) => [r.key, r.value ?? '']));
 
   const bunnyConfigured = !!(

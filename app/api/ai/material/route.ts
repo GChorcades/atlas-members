@@ -3,7 +3,8 @@ import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { lessons } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   const [lesson] = await db
     .select({ title: lessons.title, transcript: lessons.transcript, aiSummary: lessons.aiSummary })
     .from(lessons)
-    .where(eq(lessons.id, lessonId))
+    .where(and(eq(lessons.tenantId, await getTenantId()), eq(lessons.id, lessonId)))
     .limit(1);
   if (!lesson) return NextResponse.json({ error: 'Aula não encontrada' }, { status: 404 });
 

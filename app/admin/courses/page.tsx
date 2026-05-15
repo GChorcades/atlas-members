@@ -1,12 +1,15 @@
 import { db } from '@/db';
 import { courses } from '@/db/schema';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 import NewCourseButton from './new-course-button';
 import CoursesTable from './courses-table';
 import { getCourseStats } from '@/lib/course-stats';
 
 export default async function AdminCoursesPage() {
-  const rows = await db.select().from(courses).orderBy(desc(courses.createdAt));
+  const tenantId = await getTenantId();
+  const rows = await db.select().from(courses)
+    .where(eq(courses.tenantId, tenantId)).orderBy(desc(courses.createdAt));
   const stats = await getCourseStats(rows.map((c) => c.id));
 
   const allCourses = rows.map((c) => ({

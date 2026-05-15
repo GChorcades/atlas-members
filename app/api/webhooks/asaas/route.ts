@@ -29,8 +29,8 @@ type AsaasPayload = {
   };
 };
 
-async function getSettings(): Promise<Record<string, string>> {
-  const rows = await db.select().from(settings);
+async function getSettings(tenantId: string): Promise<Record<string, string>> {
+  const rows = await db.select().from(settings).where(eq(settings.tenantId, tenantId));
   return Object.fromEntries(rows.map((r) => [r.key, r.value ?? '']));
 }
 
@@ -78,7 +78,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const cfg = await getSettings();
+  // Sem host/sessão: o tenant é derivado da cobrança referenciada pelo webhook.
+  // O `asaasPaymentId` é globalmente único — usamos a linha de payment para
+  // descobrir a qual tenant pertencem as configurações (settings) a usar.
+  const [paymentRow] = body.payment?.id
+    ? await db.select().from(payments).where(eq(payments.asaasPaymentId, body.payment.id)).limit(1)
+    : [];
+  const tenantId = paymentRow?.tenantId ?? null;
+  const cfg = tenantId ? await getSettings(tenantId) : {};
   const webhookSecret = cfg['asaas_webhook_secret'];
   const apiKey = cfg['asaas_api_key'];
   const asaasEnv = cfg['asaas_env'] ?? 'sandbox';
@@ -118,11 +125,12 @@ export async function POST(req: Request) {
       const [row] = await db.select().from(payments).where(eq(payments.asaasPaymentId, payment.id)).limit(1);
       if (row?.courseId) {
         const existing = await db.select().from(enrollments)
-          .where(and(eq(enrollments.userId, row.userId), eq(enrollments.courseId, row.courseId)))
+          .where(and(eq(enrollments.tenantId, row.tenantId), eq(enrollments.userId, row.userId), eq(enrollments.courseId, row.courseId)))
           .limit(1);
         if (!existing.length) {
           await db.insert(enrollments).values({
             id: nanoid(),
+            tenantId: row.tenantId,
             userId: row.userId,
             courseId: row.courseId,
             active: true,
@@ -148,9 +156,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, note: 'customer not resolved' });
   }
 
+  // Sob multi-tenant o email não é globalmente único — escopamos ao tenant
+  // da cobrança. Sem tenant resolvido não há como identificar o usuário com segurança.
+  if (!tenantId) {
+    console.warn('[asaas-webhook] No tenant resolved for payment; skipping user update');
+    return NextResponse.json({ ok: true, note: 'tenant not resolved' });
+  }
+
   const [user] = await db.select({ id: users.id, plan: users.plan, name: users.name, email: users.email, phone: users.phone })
     .from(users)
-    .where(eq(users.email, email))
+    .where(and(eq(users.tenantId, tenantId), eq(users.email, email)))
     .limit(1);
 
   if (!user) {

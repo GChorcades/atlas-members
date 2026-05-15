@@ -1,9 +1,11 @@
 import { db } from '@/db';
 import { courses, checkouts, checkoutOffers, coupons } from '@/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 import CheckoutsClient from './checkouts-client';
 
 export default async function AdminCheckoutsPage() {
+  const tenantId = await getTenantId();
   const rows = await db
     .select({
       courseId: courses.id,
@@ -22,11 +24,14 @@ export default async function AdminCheckoutsPage() {
       socialProof: checkouts.socialProof,
     })
     .from(courses)
-    .leftJoin(checkouts, eq(checkouts.courseId, courses.id))
+    .leftJoin(checkouts, and(eq(checkouts.courseId, courses.id), eq(checkouts.tenantId, tenantId)))
+    .where(eq(courses.tenantId, tenantId))
     .orderBy(courses.title);
 
-  const allOffers = await db.select().from(checkoutOffers).orderBy(asc(checkoutOffers.createdAt));
-  const allCoupons = await db.select().from(coupons).orderBy(asc(coupons.createdAt));
+  const allOffers = await db.select().from(checkoutOffers)
+    .where(eq(checkoutOffers.tenantId, tenantId)).orderBy(asc(checkoutOffers.createdAt));
+  const allCoupons = await db.select().from(coupons)
+    .where(eq(coupons.tenantId, tenantId)).orderBy(asc(coupons.createdAt));
 
   const offersByCheckout: Record<string, typeof allOffers> = {};
   for (const o of allOffers) (offersByCheckout[o.checkoutId] ??= []).push(o);

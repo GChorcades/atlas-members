@@ -6,17 +6,19 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
 import { getCourseStats, type CourseStats } from '@/lib/course-stats';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
   const userId = session.user.id;
+  const tenantId = await getTenantId();
 
   const [user] = await db
     .select()
     .from(users)
-    .where(eq(users.id, userId))
+    .where(and(eq(users.tenantId, tenantId), eq(users.id, userId)))
     .limit(1);
 
   const userEnrollments = await db
@@ -26,18 +28,18 @@ export default async function DashboardPage() {
     })
     .from(enrollments)
     .innerJoin(courses, eq(enrollments.courseId, courses.id))
-    .where(eq(enrollments.userId, userId))
+    .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, userId)))
     .orderBy(desc(enrollments.lastAccessAt));
 
   const earnedCount = await db
     .select({ count: sql<number>`count(*)` })
     .from(userAchievements)
-    .where(eq(userAchievements.userId, userId));
+    .where(and(eq(userAchievements.tenantId, tenantId), eq(userAchievements.userId, userId)));
 
   const doneCount = await db
     .select({ count: sql<number>`count(*)` })
     .from(lessonProgress)
-    .where(and(eq(lessonProgress.userId, userId), eq(lessonProgress.done, true)));
+    .where(and(eq(lessonProgress.tenantId, tenantId), eq(lessonProgress.userId, userId), eq(lessonProgress.done, true)));
 
   const xpPct = user ? user.xp / Math.max(user.xp + 1220, 5500) : 0;
   const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });

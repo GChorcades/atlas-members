@@ -1,25 +1,30 @@
 import { db } from '@/db';
 import { checkouts, checkoutOffers, courses } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import CheckoutScreen from './checkout-form';
 import SocialProofToaster from './social-proof-toaster';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function CheckoutPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
+  const tenantId = await getTenantId();
+
   // O slug pode ser de um checkout ou de uma oferta (preço alternativo).
-  const [offer] = await db.select().from(checkoutOffers).where(eq(checkoutOffers.slug, slug)).limit(1);
+  const [offer] = await db.select().from(checkoutOffers)
+    .where(and(eq(checkoutOffers.tenantId, tenantId), eq(checkoutOffers.slug, slug))).limit(1);
 
   const checkoutId = offer ? offer.checkoutId : null;
   const [co] = checkoutId
-    ? await db.select().from(checkouts).where(eq(checkouts.id, checkoutId)).limit(1)
-    : await db.select().from(checkouts).where(eq(checkouts.slug, slug)).limit(1);
+    ? await db.select().from(checkouts).where(and(eq(checkouts.tenantId, tenantId), eq(checkouts.id, checkoutId))).limit(1)
+    : await db.select().from(checkouts).where(and(eq(checkouts.tenantId, tenantId), eq(checkouts.slug, slug))).limit(1);
 
   if (!co || !co.active) notFound();
   if (offer && !offer.active) notFound();
 
-  const [course] = await db.select().from(courses).where(eq(courses.id, co.courseId)).limit(1);
+  const [course] = await db.select().from(courses)
+    .where(and(eq(courses.tenantId, tenantId), eq(courses.id, co.courseId))).limit(1);
   if (!course) notFound();
 
   const effectivePrice = offer ? offer.price : co.price;

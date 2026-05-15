@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { lessons, modules, enrollments } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { getTenantId } from '@/lib/tenant';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -21,21 +22,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 });
   }
 
+  const tenantId = await getTenantId();
   const [lesson] = await db
     .select({ id: lessons.id, title: lessons.title, transcript: lessons.transcript, moduleId: lessons.moduleId })
     .from(lessons)
-    .where(eq(lessons.id, lessonId))
+    .where(and(eq(lessons.tenantId, tenantId), eq(lessons.id, lessonId)))
     .limit(1);
 
   if (!lesson) return NextResponse.json({ error: 'Aula não encontrada' }, { status: 404 });
 
   if (session.user.role !== 'admin') {
-    const [mod] = await db.select({ courseId: modules.courseId }).from(modules).where(eq(modules.id, lesson.moduleId)).limit(1);
+    const [mod] = await db.select({ courseId: modules.courseId }).from(modules).where(and(eq(modules.tenantId, tenantId), eq(modules.id, lesson.moduleId))).limit(1);
     if (!mod) return NextResponse.json({ error: 'Sem acesso' }, { status: 403 });
     const [enrollment] = await db
       .select({ id: enrollments.id })
       .from(enrollments)
-      .where(and(eq(enrollments.userId, session.user.id), eq(enrollments.courseId, mod.courseId)))
+      .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.userId, session.user.id), eq(enrollments.courseId, mod.courseId)))
       .limit(1);
     if (!enrollment) return NextResponse.json({ error: 'Sem acesso a esta aula' }, { status: 403 });
   }
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
   const summary = completion.choices[0]?.message?.content ?? '';
 
   if (isAdmin) {
-    await db.update(lessons).set({ aiSummary: summary }).where(eq(lessons.id, lessonId));
+    await db.update(lessons).set({ aiSummary: summary }).where(and(eq(lessons.tenantId, tenantId), eq(lessons.id, lessonId)));
   }
 
   return NextResponse.json({ summary });

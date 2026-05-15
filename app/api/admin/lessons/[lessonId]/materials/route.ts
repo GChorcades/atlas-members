@@ -1,10 +1,11 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
 import { materials } from '@/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { put, del } from '@vercel/blob';
 import { nanoid } from 'nanoid';
+import { getTenantId } from '@/lib/tenant';
 
 const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
 const ALLOWED = new Set([
@@ -43,10 +44,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ lessonI
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
   }
   const { lessonId } = await params;
+  const tenantId = await getTenantId();
   const rows = await db
     .select()
     .from(materials)
-    .where(eq(materials.lessonId, lessonId))
+    .where(and(eq(materials.tenantId, tenantId), eq(materials.lessonId, lessonId)))
     .orderBy(asc(materials.createdAt));
   return NextResponse.json({ materials: rows });
 }
@@ -78,6 +80,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ lessonI
     const id = nanoid();
     await db.insert(materials).values({
       id,
+      tenantId: await getTenantId(),
       lessonId,
       name: file.name,
       url: blob.url,
@@ -104,7 +107,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ lesso
   const materialId = url.searchParams.get('id');
   if (!materialId) return NextResponse.json({ error: 'id ausente' }, { status: 400 });
 
-  const [row] = await db.select().from(materials).where(eq(materials.id, materialId)).limit(1);
+  const tenantId = await getTenantId();
+  const [row] = await db.select().from(materials).where(and(eq(materials.tenantId, tenantId), eq(materials.id, materialId))).limit(1);
   if (!row || row.lessonId !== lessonId) {
     return NextResponse.json({ error: 'Material não encontrado' }, { status: 404 });
   }

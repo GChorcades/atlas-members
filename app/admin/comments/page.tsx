@@ -4,8 +4,10 @@ import { eq, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
 import { adminModerateComment, adminDeleteComment } from '@/lib/actions';
+import { getTenantId } from '@/lib/tenant';
 
 export default async function AdminCommentsPage() {
+  const tenantId = await getTenantId();
   const rows = await db
     .select({ comment: comments, user: users, lesson: lessons, course: courses })
     .from(comments)
@@ -13,6 +15,7 @@ export default async function AdminCommentsPage() {
     .innerJoin(lessons, eq(comments.lessonId, lessons.id))
     .innerJoin(modules, eq(lessons.moduleId, modules.id))
     .innerJoin(courses, eq(modules.courseId, courses.id))
+    .where(eq(comments.tenantId, tenantId))
     .orderBy(desc(comments.createdAt))
     .limit(100);
 
