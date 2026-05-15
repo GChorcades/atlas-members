@@ -7,6 +7,9 @@ import { and, eq } from 'drizzle-orm';
 import { getTenantId } from '@/lib/tenant';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Multi-tenant: a autenticação precisa seguir o host da requisição
+  // (cada tenant tem seu domínio), e não um NEXTAUTH_URL fixo.
+  trustHost: true,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   providers: [
