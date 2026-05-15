@@ -2,7 +2,9 @@
 
 # Atlas Members — Estado do projeto
 
-Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas), email transacional via **Brevo**, WhatsApp via **Z-API**, IA via **OpenAI** (`gpt-4o` / `gpt-4o-mini`).
+Plataforma de área de membros (LMS + checkout) **multi-tenant** construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas), email transacional via **Brevo**, WhatsApp via **Z-API**, IA via **OpenAI** (`gpt-4o` / `gpt-4o-mini`).
+
+Cada tenant é uma área de membros completa e isolada, acessível por subdomínio (`slug.claudemembers.com.br`) ou domínio próprio. Veja a seção **Multi-tenant** abaixo.
 
 **Repositório:** https://github.com/GChorcades/atlas-members (público). Branch principal: `main`. Credencial salva no macOS keychain — `git push` funciona direto sem prompt.
 
@@ -15,11 +17,15 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - `npx tsx db/seed.ts` — popular dados base
 - `npx tsx db/seed-vibe-coding.ts` — curso de demonstração ("Vibe Coding 101", idempotente)
 - `npx tsx scripts/reset-student-passwords.ts` — reset em massa de senhas de alunos para `123321`
+- `npm run db:seed-super-admin -- <email> <senha> "<Nome>"` — cria/atualiza um super admin da plataforma
+- Scripts que leem o DB direto: `dotenv` carrega `.env`, mas a conexão está em `.env.local` — rode com `export DATABASE_URL="$(grep ^DATABASE_URL= .env.local | cut -d= -f2-)"` antes
+- Deploy: **não é automático** no push. Use `vercel --prod --yes` (CLI já logada)
 
 ## Estrutura
 
 - `app/(app)/` — rotas autenticadas do aluno (dashboard, catalog, courses, profile, progress, trails)
-- `app/admin/` — painel admin (cursos, alunos, turmas/cohorts, comentários, configurações, checkouts)
+- `app/admin/` — painel admin do tenant (cursos, alunos, turmas/cohorts, comentários, configurações, checkouts)
+- `app/super-admin/` — área da plataforma (acima dos tenants): `login`, `/` (CRUD de tenants), `account` (conta do super admin). Login próprio por cookie HMAC, separado do NextAuth
 - `app/checkout/[slug]/` — checkout público (sem auth) + página de sucesso com polling
 - `app/login | register | forgot-password | reset-password/[token]` — auth público; cada rota é `page.tsx` (server, busca brand) + `*-form.tsx` (client). Header de marca via `<AuthBrand />`
 - `app/terms/` — aceite de termos LGPD obrigatório no primeiro acesso
@@ -30,18 +36,26 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - `components/skeleton.tsx` — kit de skeletons; `loading.tsx` em `(app)/`, `admin/` e `checkout/[slug]/`
 - `components/working-indicator.tsx` — feedback animado para tarefas longas de IA (transcrição, resumo, material, capítulos)
 - `components/auth-brand.tsx` — header de marca das telas de auth
-- `lib/actions.ts` — todas as server actions (admin + aluno + público). Convenção: actions admin começam com `admin*`; públicas com `*Public*`
+- `lib/actions.ts` — todas as server actions (admin + aluno + público). Convenção: actions admin começam com `admin*`; públicas com `*Public*`. Toda query é escopada por `tenant_id` (via `getTenantId()`)
+- `lib/tenant.ts` — `resolveTenant()` / `getTenantId()` (cache por request): resolve o tenant pelo `Host` da requisição
+- `lib/tenant-email.ts` — `getTenantEmail()`: nome, URL e remetente (`slug@PLATFORM_DOMAIN`) do tenant para os e-mails
+- `lib/super-admin.ts` — sessão do super admin (cookie HMAC `sa_session`, TTL 7d); `getSuperAdmin()`, `requireSuperAdmin()`
+- `lib/super-admin-actions.ts` — login/logout do super admin, CRUD de tenants, conta do super admin
+- `lib/vercel-domains.ts` — `attachDomain()` / `detachDomain()`: registra domínios de tenant no projeto Vercel via API
 - `lib/asaas.ts` — client da API Asaas
-- `lib/brevo.ts` — `sendEmail()` (email transacional Brevo)
+- `lib/brevo.ts` — `sendEmail()` (email transacional Brevo); aceita `from` opcional (remetente por tenant)
 - `lib/zapi.ts` — `sendWhatsApp()` (normaliza telefone BR, envia via Z-API)
-- `lib/notifications.ts` — orquestra email + WhatsApp em paralelo; templates: `notifyWelcome`, `notifyPasswordReset`, `notifyForgotPassword`, `notifyPaymentConfirmed`
+- `lib/notifications.ts` — orquestra email + WhatsApp em paralelo; templates: `notifyWelcome`, `notifyPasswordReset`, `notifyForgotPassword`, `notifyPaymentConfirmed`. Nome/URL/remetente seguem o tenant
 - `lib/reset-token.ts` — tokens HMAC assinados (TTL 1h) para "esqueci minha senha", sem tabela no DB
-- `lib/brand.ts` — `getBrand()` (cache) lê settings de identidade
+- `lib/brand.ts` — `getBrand()` (cache) lê settings de identidade, escopado por tenant
 - `lib/course-stats.ts` — `getCourseStats(courseIds)` retorna `{ lessonCount, totalSeconds, durationLabel, studentCount }` real (NÃO use as colunas mocadas `courses.lessonCount/duration`)
 
 ## Tabelas principais
 
-- `users` — perfil + `plan`, `cpfCnpj`, `asaasCustomerId`, `suspended`, `passwordHash`, `termsAcceptedAt` (null = ainda não aceitou os termos LGPD)
+- **`tenant_id`**: TODAS as tabelas de dados (23) têm a coluna `tenant_id` (default `tnt_default`, FK → `tenants`). Toda query lê/escreve escopada por tenant.
+- `tenants` — `id`, `name`, `slug` (subdomínio, único), `customDomain` (único), `active`, `createdAt`
+- `platform_admins` — super admins da plataforma (login próprio, fora dos tenants): `id`, `name`, `email` (único), `passwordHash`
+- `users` — perfil + `plan`, `cpfCnpj`, `asaasCustomerId`, `suspended`, `passwordHash`, `termsAcceptedAt` (null = ainda não aceitou os termos LGPD). E-mail é único **por tenant** (`unique(tenant_id, email)`), não global
 - `courses` — `published` controla visibilidade. **`coverImage` (URL Blob) tem prioridade sobre `coverBg` (gradiente)**. `lessonCount/duration` são mocados — derive via `getCourseStats`. **`students` é um número definido manualmente pelo admin** (editor do curso) e exibido como tal — NÃO é derivado
 - `modules`, `lessons` — `lessons.published` controla visibilidade; estudante só vê publicadas
 - `lessons.content` — material didático em markdown (aba "Material"); `lessons.transcript` (fonte interna p/ IA, NÃO aparece para o aluno); `lessons.aiSummary`; `lessons.chapters` (JSON `[{time,title}]`)
@@ -55,12 +69,13 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - `comments` — `parentId` (auto-ref, sem FK) para threading + `imageUrl` para anexos
 - `cohorts`, `cohort_courses`, `cohort_members` — turmas
 - `notes` — `notes.timestamp` guarda o tempo do vídeo em segundos (string); clicável p/ pular no player BunnyNet
-- `settings` — key/value: `panda_api_key`, `panda_player_id`, `asaas_api_key`, `asaas_env`, `asaas_webhook_secret`, `brand_name`, `brand_logo`, `brand_favicon`, `brand_color`, `brand_footer`, `brand_logo_only` (`'1'` = só logo, sem nome), `lgpd_terms` (texto LGPD editável)
+- `settings` — key/value, **PK composta `(tenant_id, key)`**: `panda_api_key`, `panda_player_id`, `asaas_api_key`, `asaas_env`, `asaas_webhook_secret`, `brand_name`, `brand_logo`, `brand_logo_dark` (logo para tema escuro), `brand_favicon`, `brand_color`, `brand_footer`, `brand_logo_only` (`'1'` = só logo, sem nome), `lgpd_terms` (texto LGPD editável)
 
 ## Convenções
 
 - **Tema**: `data-theme="dark"|"light"` no `<html>`. Bootstrap inline script no `app/layout.tsx` aplica antes da hidratação a partir de `localStorage('atlas-theme')` ou `prefers-color-scheme`. Toggle no `Topbar`.
-- **Brand**: `getBrand()` é chamado em `app/layout.tsx`, `(app)/layout.tsx` e `admin/layout.tsx`. Cor customizada sobrescreve `--accent`, `--accent-fg: #fff`, `--accent-soft` (color-mix). Logo aparece no sidebar; favicon via `generateMetadata`; footer pelo `AppShell`.
+- **Brand**: `getBrand()` é chamado em `app/layout.tsx`, `(app)/layout.tsx` e `admin/layout.tsx`. Cor customizada sobrescreve `--accent`, `--accent-fg: #fff`, `--accent-soft` (color-mix). Logo aparece no sidebar; favicon via `generateMetadata`; footer pelo `AppShell`. Logo tem variante para tema escuro (`brand_logo_dark`): sidebar e telas de auth renderizam as duas e o CSS mostra a certa via classes `.brand-logo-light`/`.brand-logo-dark` + `[data-theme]`.
+- **Multi-tenant**: o tenant é resolvido pelo `Host` (`lib/tenant.ts`). Toda query é escopada por `tenant_id`. `auth.ts` usa `trustHost: true` (sem `NEXTAUTH_URL` fixo) e autentica por `(tenant, email)`; a sessão carrega `tenantId`. `proxy.ts` deixa `/super-admin` passar (tem auth própria).
 - **Senha padrão de alunos**: `123321` (definida em `lib/actions.ts` constante `DEFAULT_STUDENT_PASSWORD` para o checkout público).
 - **Upload**: `POST /api/upload` (admin-only) aceita imagens até 5MB e retorna URL do Vercel Blob.
 - **Webhook Asaas**: header `asaas-access-token` validado contra `asaas_webhook_secret`. `x-test-mode: 1` só funciona quando `NODE_ENV !== 'production'`. Auto-matricula no curso quando `payment.courseId` está setado e evento é `RECEIVED`/`CONFIRMED`.
@@ -69,7 +84,8 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - **Notificações**: sempre disparadas com `await` (não fire-and-forget) — a Vercel mata a function antes do fetch terminar, causando `SocketError: other side closed`. Falhas são logadas mas não quebram o fluxo principal.
 - **Senha**: troca self-service em `/api/profile/password` (exige senha atual); reset pelo admin em `/api/admin/students/[id]/password`; "esqueci minha senha" em `/forgot-password` → token HMAC → `/reset-password/[token]`. Mínimo 6 caracteres.
 - **Material didático**: parser markdown próprio (negrito, itálico, código, blocos, listas, headings, imagens, links) — `markdown-renderer.tsx` renderiza como React elements puros (XSS-safe por construção do React, sem injeção de HTML cru). Imagens inline via `/api/admin/upload-inline` (botão ou Ctrl+V). "Gerar com IA" via `/api/ai/material`.
-- **Cupons/ofertas**: o slug em `/checkout/[slug]` resolve oferta OU checkout (`resolveCheckoutSlug` em `actions.ts`). Desconto de cupom é SEMPRE re-validado no servidor em `createPublicCheckoutCharge` — nunca confie no preço do cliente.
+- **Cupons/ofertas**: o slug em `/checkout/[slug]` resolve oferta OU checkout (`resolveCheckoutSlug` em `actions.ts`, escopado por tenant). Desconto de cupom é SEMPRE re-validado no servidor em `createPublicCheckoutCharge` — nunca confie no preço do cliente.
+- **Checkout — bandeiras de cartão**: ícones via `react-svg-credit-card-payment-icons` (`<PaymentIcon type="Visa" format="flatRounded" />`). Há um aviso fixo de que a cobrança aparece como "Asaas" na fatura.
 - **Responsivo (≤ 760px)**: sidebar vira drawer (hamburger no topbar); menu admin vira faixa horizontal rolável; checkout empilha em 1 coluna; lesson page esconde breadcrumbs e reduz título.
 
 ## Player de vídeo
@@ -93,7 +109,8 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 
 ## Integrações externas (env vars)
 
-- **Brevo** (email): `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`. O email remetente precisa estar verificado no painel Brevo.
+- **Multi-tenant / domínios**: `PLATFORM_DOMAIN=claudemembers.com.br` (domínio guarda-chuva); `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` (registro automático de domínios de tenant na Vercel).
+- **Brevo** (email): `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` (fallback). O domínio `claudemembers.com.br` está **autenticado no Brevo** (DKIM + brevo-code) — qualquer endereço `@claudemembers.com.br` pode enviar; cada tenant envia de `slug@claudemembers.com.br`.
 - **Z-API** (WhatsApp): `ZAPI_INSTANCE_ID`, `ZAPI_TOKEN`, `ZAPI_CLIENT_TOKEN` (header `Client-Token`).
 - **OpenAI**: `OPENAI_API_KEY` — `/api/ai/chat`, `/api/ai/summary`, `/api/ai/material`, `/api/ai/chapters` (`gpt-4o`); `/api/social-proof` (`gpt-4o-mini`); `/api/admin/lessons/[id]/transcribe` (`gpt-4o-transcribe`).
 - **ffmpeg-static**: dependência npm — binário do ffmpeg para extrair áudio na transcrição. `serverExternalPackages` + `outputFileTracingIncludes` no `next.config.ts` garantem o empacotamento.
@@ -106,9 +123,24 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - Email + WhatsApp disparam em: cadastro (boas-vindas), reset de senha pelo admin, "esqueci minha senha", pagamento confirmado (webhook Asaas).
 - `/api/social-proof` gera 25 nomes/cidades BR fictícios via IA, com cache em memória de 1h e fallback hardcoded. Toaster só aparece se `checkouts.socialProof` estiver ativo.
 
-## Próximo grande passo: multi-tenant
+## Multi-tenant
 
-Decisão tomada: transformar o app em multi-tenant (banco compartilhado + `tenant_id`, acesso por subdomínio primeiro). Haverá uma área "super admin" para criar tenants. Domínio próprio via API da Vercel fica para fase futura. Plano em fases já alinhado — Fase 1 = schema com `tenant_id` + migração dos dados atuais para o primeiro tenant.
+Arquitetura: **banco compartilhado + `tenant_id`**. Cada tenant é uma área de membros completa e isolada. Fases 1–4 concluídas e em produção.
+
+- **Resolução**: `lib/tenant.ts` resolve o tenant pelo `Host` — subdomínio de `PLATFORM_DOMAIN` (`slug.claudemembers.com.br`), domínio próprio (`tenants.customDomain`), ou fallback para o tenant padrão (`tnt_default`, "Claude Members"). `localhost`/`*.vercel.app`/apex caem no padrão.
+- **Auth**: `auth.ts` autentica por `(tenant_id, email)`; `trustHost: true` (sem `NEXTAUTH_URL` fixo, senão a auth redireciona para o host errado entre tenants). JWT/sessão carregam `tenantId`.
+- **Queries**: tudo escopado por `tenant_id` (~39 arquivos). Inserts setam `tenant_id`. `settings` tem PK composta; `users.email` é único por tenant.
+- **Super Admin** (`/super-admin`): área da plataforma, login próprio (cookie HMAC, tabela `platform_admins`). CRUD de tenants — ao criar um tenant, cria junto a 1ª conta de admin dele. `/super-admin/account` edita a conta do super admin. Criar o primeiro super admin: `npm run db:seed-super-admin`.
+- **Domínios** (`lib/vercel-domains.ts`): ao criar/editar um tenant, o subdomínio e o domínio próprio são registrados no projeto Vercel via API automaticamente. DNS: subdomínios cobertos por um wildcard `CNAME *` no Cloudflare; domínio próprio precisa de `CNAME → cname.vercel-dns.com` (subdomínio) ou `A → 76.76.21.21` (apex) no DNS daquele domínio.
+- **E-mail por tenant**: cada tenant envia de `slug@claudemembers.com.br` com nome/URL próprios (`lib/tenant-email.ts`). O domínio guarda-chuva foi autenticado uma vez no Brevo e cobre todos. O webhook do Asaas (sem host) recebe o tenant explicitamente.
+
+### Infra de e-mail do domínio `claudemembers.com.br`
+- DNS no **Cloudflare**. **Receber**: Cloudflare Email Routing (MX) → catch-all encaminha para um Gmail. **Enviar**: Brevo (DKIM/brevo-code autenticados). São funções separadas; só pode haver **um** registro SPF.
+- Plano Vercel: **Hobby** (grátis) — sem wildcard *domain* na Vercel; cada subdomínio de tenant é registrado individualmente via API.
+
+### Gotchas multi-tenant
+- **SSL de domínio de tenant pode travar**: se `https://...` não subir após o DNS propagar, force com `vercel certs issue <domínio>`.
+- **`db:push` é interativo** e pode pedir confirmação destrutiva — para mudanças de constraint, aplicar o DDL direto via `psql` é mais seguro.
 
 ## Pendências conhecidas
 
@@ -118,3 +150,4 @@ Decisão tomada: transformar o app em multi-tenant (banco compartilhado + `tenan
 - Texto dos termos LGPD é editável em Configurações → LGPD (`settings.lgpd_terms`); o padrão está em `lib/lgpd-default.ts` — revisar com jurídico antes de produção.
 - Endereço do CEP é exibido pro cliente conferir, mas só o `postalCode` é enviado ao Asaas.
 - Transcrição: vídeos muito longos podem estourar 25 MB mesmo só com áudio — particionamento automático não implementado.
+- Multi-tenant: emissão de SSL de domínio de tenant não é automatizada (rodar `vercel certs issue` se travar). Brevo/Z-API são globais — envio do domínio próprio de cada tenant exigiria autenticar o domínio do tenant no Brevo.
