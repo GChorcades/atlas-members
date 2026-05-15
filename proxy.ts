@@ -12,6 +12,7 @@ export default auth((req) => {
     pathname.startsWith('/forgot-password') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/checkout') ||
+    pathname.startsWith('/super-admin') ||
     pathname.startsWith('/api/');
 
   if (!isAuthed && !isPublicPage) {

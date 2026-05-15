@@ -42,6 +42,18 @@ export const tenants = pgTable('tenants', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+/**
+ * Administradores da plataforma (super admins) — operam acima dos tenants.
+ * Tabela separada de `users`: não pertence a nenhum tenant e tem login próprio.
+ */
+export const platformAdmins = pgTable('platform_admins', {
+  id: text('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
