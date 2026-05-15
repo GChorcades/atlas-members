@@ -8,6 +8,7 @@ import { DEFAULT_LGPD_TERMS } from '@/lib/lgpd-default';
 type Props = {
   initial: Record<string, string>;
   secretsSet: Record<string, boolean>;
+  webhookUrl: string;
   bunnyEnv: { libraryId: string; cdnHostname: string; configured: boolean };
   messagingEnv: {
     brevoApiKey: boolean;
@@ -44,7 +45,7 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
   );
 }
 
-export default function SettingsClient({ initial, secretsSet, bunnyEnv, messagingEnv }: Props) {
+export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyEnv, messagingEnv }: Props) {
   const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd'>('brand');
   const [zapiCheck, setZapiCheck] = useState<{ loading: boolean; connected?: boolean; error?: string }>({ loading: false });
 
@@ -498,11 +499,24 @@ export default function SettingsClient({ initial, secretsSet, bunnyEnv, messagin
               {/* Webhook URL info */}
               <div style={{ padding: '14px 16px', borderRadius: 9, background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>
                 <p style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>URL do Webhook</p>
-                <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)', wordBreak: 'break-all' }}>
-                  https://seu-dominio.com/api/webhooks/asaas
-                </code>
+                <div className="row gap-8" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                  <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)', wordBreak: 'break-all', flex: '1 1 240px' }}>
+                    {webhookUrl}
+                  </code>
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(webhookUrl);
+                      setSaved('webhook-url');
+                      setTimeout(() => setSaved(null), 2000);
+                    }}
+                  >
+                    {saved === 'webhook-url' ? <><Icon name="check" size={13} /> Copiado</> : 'Copiar'}
+                  </button>
+                </div>
                 <p className="muted" style={{ fontSize: 11.5, marginTop: 8, lineHeight: 1.5 }}>
-                  Configure esta URL no painel da Asaas para receber notificações de pagamento e atualizar automaticamente o plano dos alunos.
+                  Cole esta URL no painel da sua conta Asaas (Integrações → Webhooks). A URL é a <strong>mesma para todos</strong> — o sistema identifica o tenant pela própria cobrança. Cada tenant usa a <strong>sua</strong> API key e o <strong>seu</strong> token de webhook.
                 </p>
                 <div className="row gap-8" style={{ marginTop: 10, flexWrap: 'wrap' }}>
                   {['PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_RENEWED'].map((ev) => (

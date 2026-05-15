@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { db } from '@/db';
 import { settings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -25,10 +26,16 @@ export default async function AdminSettingsPage() {
     process.env.BUNNY_CDN_HOSTNAME
   );
 
+  // URL real do webhook Asaas — a mesma para todos os tenants.
+  const host = (await headers()).get('host') ?? 'claudemembers.com.br';
+  const proto = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+  const webhookUrl = `${proto}://${host}/api/webhooks/asaas`;
+
   return (
     <SettingsClient
       initial={cfg}
       secretsSet={secretsSet}
+      webhookUrl={webhookUrl}
       bunnyEnv={{
         libraryId: process.env.NEXT_PUBLIC_BUNNY_LIBRARY_ID ?? '',
         cdnHostname: process.env.BUNNY_CDN_HOSTNAME ?? '',
