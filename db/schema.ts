@@ -27,10 +27,25 @@ export const subscriptionCycleEnum = pgEnum('subscription_cycle', [
   'WEEKLY', 'BIWEEKLY', 'MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY',
 ]);
 
+// ─── Tenants (multi-tenant) ─────────────────────────────────────────────────────
+
+/** ID do tenant padrão — recebe todos os dados pré-existentes (single-tenant → multi). */
+export const DEFAULT_TENANT_ID = 'tnt_default';
+
+export const tenants = pgTable('tenants', {
+  id: text('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 100 }).notNull().unique(),       // subdomínio
+  customDomain: varchar('custom_domain', { length: 255 }).unique(), // domínio próprio (futuro)
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(), // Neon Auth managed
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   avatarUrl: text('avatar_url'),
@@ -54,6 +69,7 @@ export const users = pgTable('users', {
 
 export const courses = pgTable('courses', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   subtitle: varchar('subtitle', { length: 500 }),
   description: text('description'),
@@ -75,6 +91,7 @@ export const courses = pgTable('courses', {
 });
 
 export const courseTags = pgTable('course_tags', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   tag: varchar('tag', { length: 100 }).notNull(),
 }, (t) => [primaryKey({ columns: [t.courseId, t.tag] })]);
@@ -83,6 +100,7 @@ export const courseTags = pgTable('course_tags', {
 
 export const modules = pgTable('modules', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   position: integer('position').notNull().default(0),
@@ -94,6 +112,7 @@ export const modules = pgTable('modules', {
 
 export const lessons = pgTable('lessons', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   moduleId: text('module_id').notNull().references(() => modules.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   type: lessonTypeEnum('type').notNull().default('video'),
@@ -118,6 +137,7 @@ export const lessons = pgTable('lessons', {
 
 export const materials = pgTable('materials', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   lessonId: text('lesson_id').notNull().references(() => lessons.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
   url: text('url').notNull(),
@@ -130,6 +150,7 @@ export const materials = pgTable('materials', {
 
 export const enrollments = pgTable('enrollments', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   progress: real('progress').notNull().default(0),
@@ -143,6 +164,7 @@ export const enrollments = pgTable('enrollments', {
 // ─── Lesson Progress ──────────────────────────────────────────────────────────
 
 export const lessonProgress = pgTable('lesson_progress', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   lessonId: text('lesson_id').notNull().references(() => lessons.id, { onDelete: 'cascade' }),
   done: boolean('done').notNull().default(false),
@@ -154,6 +176,7 @@ export const lessonProgress = pgTable('lesson_progress', {
 
 export const notes = pgTable('notes', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   lessonId: text('lesson_id').notNull().references(() => lessons.id, { onDelete: 'cascade' }),
   text: text('text').notNull(),
@@ -165,6 +188,7 @@ export const notes = pgTable('notes', {
 
 export const comments = pgTable('comments', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   lessonId: text('lesson_id').notNull().references(() => lessons.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   parentId: text('parent_id').references((): AnyPgColumn => comments.id, { onDelete: 'cascade' }),
@@ -179,6 +203,7 @@ export const comments = pgTable('comments', {
 
 export const achievements = pgTable('achievements', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 100 }).notNull(),
   description: text('description'),
   icon: varchar('icon', { length: 50 }).notNull(),
@@ -186,6 +211,7 @@ export const achievements = pgTable('achievements', {
 });
 
 export const userAchievements = pgTable('user_achievements', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   achievementId: text('achievement_id').notNull().references(() => achievements.id, { onDelete: 'cascade' }),
   earnedAt: timestamp('earned_at').notNull().defaultNow(),
@@ -195,6 +221,7 @@ export const userAchievements = pgTable('user_achievements', {
 
 export const trails = pgTable('trails', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   color: varchar('color', { length: 20 }),
   position: integer('position').notNull().default(0),
@@ -202,6 +229,7 @@ export const trails = pgTable('trails', {
 });
 
 export const trailCourses = pgTable('trail_courses', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   trailId: text('trail_id').notNull().references(() => trails.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   position: integer('position').notNull().default(0),
@@ -210,6 +238,7 @@ export const trailCourses = pgTable('trail_courses', {
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 export const settings = pgTable('settings', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   key: varchar('key', { length: 100 }).primaryKey(),
   value: text('value'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -219,6 +248,7 @@ export const settings = pgTable('settings', {
 
 export const subscriptions = pgTable('subscriptions', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   asaasSubscriptionId: varchar('asaas_subscription_id', { length: 100 }),
   plan: planEnum('plan').notNull(),
@@ -237,6 +267,7 @@ export const subscriptions = pgTable('subscriptions', {
 
 export const payments = pgTable('payments', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   asaasPaymentId: varchar('asaas_payment_id', { length: 100 }),
   subscriptionId: text('subscription_id').references(() => subscriptions.id, { onDelete: 'set null' }),
@@ -263,6 +294,7 @@ export const payments = pgTable('payments', {
 
 export const checkouts = pgTable('checkouts', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }).unique(),
   slug: varchar('slug', { length: 100 }).notNull().unique(),
   active: boolean('active').notNull().default(true),
@@ -282,6 +314,7 @@ export const checkouts = pgTable('checkouts', {
 
 export const checkoutOffers = pgTable('checkout_offers', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   checkoutId: text('checkout_id').notNull().references(() => checkouts.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 100 }).notNull().unique(),
@@ -297,6 +330,7 @@ export const discountTypeEnum = pgEnum('discount_type', ['percent', 'fixed']);
 
 export const coupons = pgTable('coupons', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   checkoutId: text('checkout_id').notNull().references(() => checkouts.id, { onDelete: 'cascade' }),
   code: varchar('code', { length: 50 }).notNull(),
   discountType: discountTypeEnum('discount_type').notNull(),
@@ -310,6 +344,7 @@ export const coupons = pgTable('coupons', {
 
 export const cohorts = pgTable('cohorts', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   color: varchar('color', { length: 20 }),
@@ -320,11 +355,13 @@ export const cohorts = pgTable('cohorts', {
 });
 
 export const cohortCourses = pgTable('cohort_courses', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   cohortId: text('cohort_id').notNull().references(() => cohorts.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.cohortId, t.courseId] })]);
 
 export const cohortMembers = pgTable('cohort_members', {
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
   cohortId: text('cohort_id').notNull().references(() => cohorts.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
