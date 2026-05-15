@@ -250,7 +250,7 @@ export default function TenantManager({
                       )}
                     </div>
                     <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                      {t.userCount} usuário{t.userCount !== 1 ? 's' : ''} · {t.courseCount} curso{t.courseCount !== 1 ? 's' : ''}
+                      {t.userCount} usuário{t.userCount !== 1 ? 's' : ''} · {t.courseCount} curso{t.courseCount !== 1 ? 's' : ''} · cadastrado em {new Date(t.createdAt).toLocaleDateString('pt-BR')}
                     </div>
                   </div>
                   <div className="row" style={{ gap: 8, flexShrink: 0 }}>
