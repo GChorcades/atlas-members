@@ -17,7 +17,7 @@ type Props = {
   collapsed: boolean;
   onToggle: () => void;
   onMobileClose?: () => void;
-  brand?: { name: string; logoUrl: string | null; faviconUrl: string | null; logoOnly: boolean };
+  brand?: { name: string; logoUrl: string | null; logoDarkUrl: string | null; faviconUrl: string | null; logoOnly: boolean };
 };
 
 export function Sidebar({ user, collapsed, onToggle, onMobileClose, brand }: Props) {
@@ -27,6 +27,9 @@ export function Sidebar({ user, collapsed, onToggle, onMobileClose, brand }: Pro
   const brandMark = (brandName[0] ?? 'A').toUpperCase();
   // Recolhido: usa o favicon (ícone quadrado); expandido: usa o logo.
   const markSrc = collapsed ? (brand?.faviconUrl || brand?.logoUrl) : brand?.logoUrl;
+  // Variante para modo escuro (só no estado expandido, onde o logo é usado).
+  const markSrcDark = collapsed ? markSrc : (brand?.logoDarkUrl || brand?.logoUrl);
+  const hasDarkLogo = !!markSrc && !!markSrcDark && markSrcDark !== markSrc;
   // Nome ao lado do logo só quando não há logo OU a opção "apenas logo" está desligada.
   const logoOnly = !!(brand?.logoUrl && brand?.logoOnly);
   const showName = !collapsed && !logoOnly;
@@ -37,14 +40,35 @@ export function Sidebar({ user, collapsed, onToggle, onMobileClose, brand }: Pro
     <aside className="sidebar">
       <div className="sidebar-brand">
         {markSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={`${markSrc}-${collapsed ? 'c' : 'e'}-${fullWidthLogo ? 'full' : 'mark'}`}
-            src={markSrc}
-            alt={brandName}
-            className={fullWidthLogo ? 'sidebar-brand-logo-full' : 'sidebar-brand-mark'}
-            style={{ objectFit: 'contain', background: 'transparent', padding: 2 }}
-          />
+          hasDarkLogo ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                key={`light-${markSrc}-${collapsed ? 'c' : 'e'}-${fullWidthLogo ? 'full' : 'mark'}`}
+                src={markSrc}
+                alt={brandName}
+                className={`${fullWidthLogo ? 'sidebar-brand-logo-full' : 'sidebar-brand-mark'} brand-logo-light`}
+                style={{ objectFit: 'contain', background: 'transparent', padding: 2 }}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                key={`dark-${markSrcDark}-${collapsed ? 'c' : 'e'}-${fullWidthLogo ? 'full' : 'mark'}`}
+                src={markSrcDark ?? markSrc}
+                alt={brandName}
+                className={`${fullWidthLogo ? 'sidebar-brand-logo-full' : 'sidebar-brand-mark'} brand-logo-dark`}
+                style={{ objectFit: 'contain', background: 'transparent', padding: 2 }}
+              />
+            </>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`${markSrc}-${collapsed ? 'c' : 'e'}-${fullWidthLogo ? 'full' : 'mark'}`}
+              src={markSrc}
+              alt={brandName}
+              className={fullWidthLogo ? 'sidebar-brand-logo-full' : 'sidebar-brand-mark'}
+              style={{ objectFit: 'contain', background: 'transparent', padding: 2 }}
+            />
+          )
         ) : (
           <span className="sidebar-brand-mark">{brandMark}</span>
         )}

@@ -7,13 +7,14 @@ import { getTenantId } from '@/lib/tenant';
 export type Brand = {
   name: string;
   logoUrl: string | null;
+  logoDarkUrl: string | null;
   faviconUrl: string | null;
   color: string | null;
   footer: string | null;
   logoOnly: boolean;
 };
 
-const KEYS = ['brand_name', 'brand_logo', 'brand_favicon', 'brand_color', 'brand_footer', 'brand_logo_only'] as const;
+const KEYS = ['brand_name', 'brand_logo', 'brand_logo_dark', 'brand_favicon', 'brand_color', 'brand_footer', 'brand_logo_only'] as const;
 
 export const getBrand = cache(async (): Promise<Brand> => {
   const rows = await db.select().from(settings)
@@ -22,6 +23,7 @@ export const getBrand = cache(async (): Promise<Brand> => {
   return {
     name: (map['brand_name'] || '').trim() || 'Atlas',
     logoUrl: map['brand_logo']?.trim() || null,
+    logoDarkUrl: map['brand_logo_dark']?.trim() || null,
     faviconUrl: map['brand_favicon']?.trim() || null,
     color: map['brand_color']?.trim() || null,
     footer: map['brand_footer']?.trim() || null,

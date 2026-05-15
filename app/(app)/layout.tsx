@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const brand = await getBrand();
 
   return (
-    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
+    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, logoDarkUrl: brand.logoDarkUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
       {children}
     </AppShell>
   );

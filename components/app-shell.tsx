@@ -15,6 +15,7 @@ type UserData = {
 type BrandData = {
   name: string;
   logoUrl: string | null;
+  logoDarkUrl: string | null;
   faviconUrl: string | null;
   logoOnly: boolean;
   footer: string | null;
@@ -46,7 +47,7 @@ export function AppShell({
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
         onMobileClose={() => setMobileOpen(false)}
-        brand={brand ? { name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly } : undefined}
+        brand={brand ? { name: brand.name, logoUrl: brand.logoUrl, logoDarkUrl: brand.logoDarkUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly } : undefined}
       />
       <div className="main">
         <Topbar

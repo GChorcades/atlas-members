@@ -91,11 +91,13 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
   // Brand
   const [brandName, setBrandName] = useState(initial['brand_name'] ?? '');
   const [brandLogo, setBrandLogo] = useState(initial['brand_logo'] ?? '');
+  const [brandLogoDark, setBrandLogoDark] = useState(initial['brand_logo_dark'] ?? '');
   const [brandLogoOnly, setBrandLogoOnly] = useState(initial['brand_logo_only'] === '1');
   const [brandFavicon, setBrandFavicon] = useState(initial['brand_favicon'] ?? '');
   const [brandColor, setBrandColor] = useState(initial['brand_color'] ?? '');
   const [brandFooter, setBrandFooter] = useState(initial['brand_footer'] ?? '');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   // Panda Video
@@ -187,14 +189,27 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
                 <AssetField
-                  label="Logo"
-                  hint="PNG/SVG transparente fica melhor. Substitui a marca 'A' da sidebar."
+                  label="Logo — modo claro"
+                  hint="PNG/SVG transparente. Usado em fundo claro. Substitui a marca 'A' da sidebar."
                   value={brandLogo}
                   onChange={setBrandLogo}
                   onUpload={(file) => uploadBrandAsset(file, setBrandLogo, setUploadingLogo)}
                   uploading={uploadingLogo}
                   previewSize={56}
                 />
+                <AssetField
+                  label="Logo — modo escuro"
+                  hint="Versão da logo para fundo escuro (cores claras). Usada quando o tema escuro está ativo."
+                  value={brandLogoDark}
+                  onChange={setBrandLogoDark}
+                  onUpload={(file) => uploadBrandAsset(file, setBrandLogoDark, setUploadingLogoDark)}
+                  uploading={uploadingLogoDark}
+                  previewSize={56}
+                  previewDark
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
                 <AssetField
                   label="Favicon"
                   hint="Ícone que aparece na aba do navegador (32×32 PNG recomendado)."
@@ -269,6 +284,7 @@ export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Prop
                 onClick={() => handleSave('brand', {
                   brand_name: brandName,
                   brand_logo: brandLogo,
+                  brand_logo_dark: brandLogoDark,
                   brand_favicon: brandFavicon,
                   brand_color: brandColor,
                   brand_footer: brandFooter,
@@ -665,6 +681,7 @@ function AssetField({
   onUpload,
   uploading,
   previewSize,
+  previewDark,
 }: {
   label: string;
   hint: string;
@@ -673,6 +690,7 @@ function AssetField({
   onUpload: (file: File) => void;
   uploading: boolean;
   previewSize: number;
+  previewDark?: boolean;
 }) {
   return (
     <div className="field-group">
@@ -684,7 +702,7 @@ function AssetField({
             height: previewSize,
             borderRadius: 8,
             border: '1px solid var(--border)',
-            background: 'var(--bg-muted)',
+            background: previewDark ? '#09090b' : 'var(--bg-muted)',
             display: 'grid',
             placeItems: 'center',
             overflow: 'hidden',

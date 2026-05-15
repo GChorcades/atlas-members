@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const brand = await getBrand();
 
   return (
-    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
+    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, logoDarkUrl: brand.logoDarkUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
       <div className="content content-wide" style={{ maxWidth: 1440 }}>
         <div className="eyebrow">Painel</div>
         <h1 className="h1-serif mt-8 mb-24">Admin</h1>
