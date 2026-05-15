@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { users, settings, payments, enrollments } from '@/db/schema';
+import { users, settings, payments, enrollments, tenants } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { mapAsaasStatusToOurs } from '@/lib/asaas';
@@ -184,9 +184,15 @@ export async function POST(req: Request) {
       }
       if (event !== 'SUBSCRIPTION_RENEWED') {
         try {
+          const [tenantRow] = await db
+            .select({ name: tenants.name, slug: tenants.slug, customDomain: tenants.customDomain })
+            .from(tenants)
+            .where(eq(tenants.id, tenantId))
+            .limit(1);
           await notifyPaymentConfirmed(
             { name: user.name, email: user.email, phone: user.phone },
             { description: payment.description ?? 'Acesso à plataforma', value: payment.value },
+            tenantRow,
           );
         } catch (err) {
           console.error('[asaas-webhook] notify falhou', err);

@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/lib/brevo';
 import { sendWhatsApp } from '@/lib/zapi';
 import { getTenantId } from '@/lib/tenant';
+import { getTenantEmail } from '@/lib/tenant-email';
 
 async function getSession() {
   const session = await auth();
@@ -871,7 +872,8 @@ export async function adminSendMessage(data: {
     const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">
       ${data.body.split('\n').map((l) => `<p style="margin:0 0 10px;">${l.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] ?? c))}</p>`).join('')}
     </div>`;
-    const res = await sendEmail({ to: { email: user.email, name: user.name }, subject, htmlContent: html });
+    const { sender } = await getTenantEmail();
+    const res = await sendEmail({ to: { email: user.email, name: user.name }, subject, htmlContent: html, from: sender });
     return res.ok ? { ok: true } : { ok: false, error: res.error ?? 'Falha ao enviar email.' };
   }
 

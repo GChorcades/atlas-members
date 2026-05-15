@@ -8,12 +8,14 @@ type SendEmailParams = {
   subject: string;
   htmlContent: string;
   textContent?: string;
+  /** Remetente — quando omitido, usa o remetente padrão da plataforma. */
+  from?: { email: string; name?: string };
 };
 
 export async function sendEmail(params: SendEmailParams): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME ?? senderEmail;
+  const senderEmail = params.from?.email || process.env.BREVO_SENDER_EMAIL;
+  const senderName = params.from?.name || process.env.BREVO_SENDER_NAME || senderEmail;
 
   if (!apiKey || !senderEmail) {
     console.warn('[brevo] BREVO_API_KEY ou BREVO_SENDER_EMAIL ausente — pulando envio');
