@@ -13,6 +13,7 @@ import {
   createSuperAdminToken,
   getSuperAdmin,
 } from '@/lib/super-admin';
+import { attachDomain, detachDomain, tenantSubdomain } from '@/lib/vercel-domains';
 
 const RESERVED_SLUGS = new Set([
   'www', 'app', 'admin', 'api', 'super-admin', 'login', 'register',
@@ -80,7 +81,7 @@ export async function createTenant(data: {
   adminName: string;
   adminEmail: string;
   adminPassword: string;
-}): Promise<{ ok: true; tenantId: string } | { ok: false; error: string }> {
+}): Promise<{ ok: true; tenantId: string; warning?: string } | { ok: false; error: string }> {
   await assertSuperAdmin();
 
   const name = data.name.trim();
@@ -122,19 +123,34 @@ export async function createTenant(data: {
     termsAcceptedAt: new Date(),
   });
 
+  // Registra os domínios do tenant no projeto da Vercel.
+  const warnings: string[] = [];
+  const subdomain = tenantSubdomain(slug);
+  if (subdomain) {
+    const r = await attachDomain(subdomain);
+    if (!r.ok) warnings.push(`Subdomínio ${subdomain}: ${r.error}`);
+  }
+  if (customDomain) {
+    const r = await attachDomain(customDomain);
+    if (!r.ok) warnings.push(`Domínio ${customDomain}: ${r.error}`);
+  }
+
   revalidatePath('/super-admin');
-  return { ok: true, tenantId };
+  return { ok: true, tenantId, warning: warnings.length ? warnings.join(' · ') : undefined };
 }
 
 export async function updateTenant(
   id: string,
   data: { name: string; slug: string; customDomain?: string },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; warning?: string } | { ok: false; error: string }> {
   await assertSuperAdmin();
 
   const name = data.name.trim();
   const slug = normalizeSlug(data.slug);
   const customDomain = data.customDomain?.trim().toLowerCase() || null;
+
+  const [current] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+  if (!current) return { ok: false, error: 'Tenant não encontrado.' };
 
   if (name.length < 2) return { ok: false, error: 'Nome do tenant muito curto.' };
   if (!slug || slug.length < 2) return { ok: false, error: 'Subdomínio inválido.' };
@@ -153,8 +169,28 @@ export async function updateTenant(
   }
 
   await db.update(tenants).set({ name, slug, customDomain }).where(eq(tenants.id, id));
+
+  // Sincroniza os domínios na Vercel quando slug ou domínio próprio mudam.
+  const warnings: string[] = [];
+  if (slug !== current.slug) {
+    const oldSub = tenantSubdomain(current.slug);
+    const newSub = tenantSubdomain(slug);
+    if (oldSub) await detachDomain(oldSub);
+    if (newSub) {
+      const r = await attachDomain(newSub);
+      if (!r.ok) warnings.push(`Subdomínio ${newSub}: ${r.error}`);
+    }
+  }
+  if (customDomain !== current.customDomain) {
+    if (current.customDomain) await detachDomain(current.customDomain);
+    if (customDomain) {
+      const r = await attachDomain(customDomain);
+      if (!r.ok) warnings.push(`Domínio ${customDomain}: ${r.error}`);
+    }
+  }
+
   revalidatePath('/super-admin');
-  return { ok: true };
+  return { ok: true, warning: warnings.length ? warnings.join(' · ') : undefined };
 }
 
 export async function toggleTenantActive(id: string, active: boolean): Promise<void> {

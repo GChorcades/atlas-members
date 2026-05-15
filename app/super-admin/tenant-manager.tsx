@@ -40,12 +40,14 @@ export default function TenantManager({
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
 
   const activeCount = tenants.filter((t) => t.active).length;
 
   function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+    setWarning('');
     const fd = new FormData(e.currentTarget);
     const payload = {
       name: String(fd.get('name') ?? ''),
@@ -59,6 +61,7 @@ export default function TenantManager({
       const res = await createTenant(payload);
       if (res.ok) {
         setShowCreate(false);
+        if (res.warning) setWarning(res.warning);
         router.refresh();
       } else {
         setError(res.error);
@@ -69,6 +72,7 @@ export default function TenantManager({
   function handleUpdate(id: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+    setWarning('');
     const fd = new FormData(e.currentTarget);
     const payload = {
       name: String(fd.get('name') ?? ''),
@@ -79,6 +83,7 @@ export default function TenantManager({
       const res = await updateTenant(id, payload);
       if (res.ok) {
         setEditingId(null);
+        if (res.warning) setWarning(res.warning);
         router.refresh();
       } else {
         setError(res.error);
@@ -158,6 +163,23 @@ export default function TenantManager({
         )}
 
         {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
+
+        {warning && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 8,
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              background: 'color-mix(in oklab, #f59e0b 14%, transparent)',
+              border: '1px solid color-mix(in oklab, #f59e0b 35%, transparent)',
+              color: '#b45309',
+            }}
+          >
+            Tenant salvo, mas houve um problema ao registrar o domínio na Vercel: {warning}
+          </div>
+        )}
 
         {/* Create form */}
         {showCreate && (
