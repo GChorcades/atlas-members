@@ -19,7 +19,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `${brand.name} — Área de Membros`,
     description: 'Plataforma de cursos online',
-    icons: brand.faviconUrl ? { icon: brand.faviconUrl } : undefined,
+    icons: brand.faviconUrl
+      ? { icon: [{ url: brand.faviconUrl }], shortcut: brand.faviconUrl, apple: brand.faviconUrl }
+      : undefined,
   };
 }
 

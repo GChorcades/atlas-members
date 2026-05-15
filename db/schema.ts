@@ -45,6 +45,7 @@ export const users = pgTable('users', {
   cpfCnpj: varchar('cpf_cnpj', { length: 30 }),
   asaasCustomerId: varchar('asaas_customer_id', { length: 100 }),
   suspended: boolean('suspended').notNull().default(false),
+  termsAcceptedAt: timestamp('terms_accepted_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -104,6 +105,7 @@ export const lessons = pgTable('lessons', {
   content: text('content'),
   transcript: text('transcript'),
   aiSummary: text('ai_summary'),
+  chapters: text('chapters'), // JSON: [{ time: number (segundos), title: string }]
   allowComments: boolean('allow_comments').notNull().default(true),
   allowDownload: boolean('allow_download').notNull().default(false),
   required: boolean('required').notNull().default(true),
@@ -271,8 +273,37 @@ export const checkouts = pgTable('checkouts', {
   allowBoleto: boolean('allow_boleto').notNull().default(true),
   allowCreditCard: boolean('allow_credit_card').notNull().default(true),
   maxInstallments: integer('max_installments').notNull().default(12),
+  socialProof: boolean('social_proof').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Checkout offers (preços alternativos com link próprio) ──────────────────
+
+export const checkoutOffers = pgTable('checkout_offers', {
+  id: text('id').primaryKey(),
+  checkoutId: text('checkout_id').notNull().references(() => checkouts.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 100 }).notNull().unique(),
+  price: real('price').notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Coupons (cupons de desconto por checkout) ───────────────────────────────
+
+export const discountTypeEnum = pgEnum('discount_type', ['percent', 'fixed']);
+
+export const coupons = pgTable('coupons', {
+  id: text('id').primaryKey(),
+  checkoutId: text('checkout_id').notNull().references(() => checkouts.id, { onDelete: 'cascade' }),
+  code: varchar('code', { length: 50 }).notNull(),
+  discountType: discountTypeEnum('discount_type').notNull(),
+  discountValue: real('discount_value').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // ─── Cohorts (Turmas) ─────────────────────────────────────────────────────────

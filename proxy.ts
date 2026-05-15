@@ -9,6 +9,8 @@ export default auth((req) => {
   const isPublicPage =
     pathname.startsWith('/login') ||
     pathname.startsWith('/register') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/reset-password') ||
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/api/');
 

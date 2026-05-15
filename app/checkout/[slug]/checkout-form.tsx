@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { createPublicCheckoutCharge } from '@/lib/actions';
+import { createPublicCheckoutCharge, validatePublicCoupon } from '@/lib/actions';
 
 type BillingType = 'PIX' | 'BOLETO' | 'CREDIT_CARD';
 
@@ -37,6 +37,77 @@ export default function CheckoutScreen({
   const [billingType, setBillingType] = useState<BillingType>(firstAllowed);
   const [installments, setInstallments] = useState(1);
 
+  // CEP lookup
+  const [cep, setCep] = useState('');
+  const [address, setAddress] = useState({ street: '', neighborhood: '', city: '', uf: '' });
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState('');
+
+  async function lookupCep(raw: string) {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    setCepError('');
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        setCepError('CEP não encontrado');
+        setAddress({ street: '', neighborhood: '', city: '', uf: '' });
+      } else {
+        setAddress({
+          street: data.logradouro ?? '',
+          neighborhood: data.bairro ?? '',
+          city: data.localidade ?? '',
+          uf: data.uf ?? '',
+        });
+      }
+    } catch {
+      setCepError('Não foi possível buscar o CEP');
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  function formatCep(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 8);
+    return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  }
+
+  // Cupom de desconto
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; finalPrice: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+
+  async function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError('');
+    try {
+      const res = await validatePublicCoupon(slug, code);
+      if (res.ok) {
+        setAppliedCoupon({ code: code.toUpperCase(), finalPrice: res.finalPrice });
+      } else {
+        setAppliedCoupon(null);
+        setCouponError(res.error);
+      }
+    } catch {
+      setCouponError('Erro ao validar cupom.');
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  }
+
+  const effectivePrice = appliedCoupon ? appliedCoupon.finalPrice : price;
+
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
@@ -49,6 +120,7 @@ export default function CheckoutScreen({
       phone: String(fd.get('phone') ?? '').trim(),
       postalCode: String(fd.get('postalCode') ?? '').replace(/\D/g, ''),
       billingType,
+      couponCode: appliedCoupon?.code,
       installmentCount: billingType === 'CREDIT_CARD' ? installments : undefined,
       creditCard: billingType === 'CREDIT_CARD' ? {
         holderName: String(fd.get('cc_holder') ?? '').trim(),
@@ -77,13 +149,13 @@ export default function CheckoutScreen({
     });
   }
 
-  const installmentValue = price / installments;
+  const installmentValue = effectivePrice / installments;
   const isCard = billingType === 'CREDIT_CARD';
 
   return (
     <form
       onSubmit={submit}
-      className="card"
+      className="card checkout-form"
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) 320px',
@@ -94,7 +166,7 @@ export default function CheckoutScreen({
         overflow: 'hidden',
       }}
     >
-      <div style={{ padding: '32px 36px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="checkout-main" style={{ padding: '32px 36px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         {error && <div className="auth-error">{error}</div>}
 
         <Section title="Informações Pessoais" subtitle="Para quem devemos enviar o acesso?">
@@ -114,10 +186,94 @@ export default function CheckoutScreen({
           </div>
         </Section>
 
-        <Section title="Endereço de cobrança" subtitle="Necessário para emissão da cobrança.">
-          <label className="field-group" style={{ maxWidth: 220 }}>
-            <input className="input-field" name="postalCode" required placeholder="CEP*" inputMode="numeric" />
-          </label>
+        <Section title="Endereço de cobrança" subtitle="Digite o CEP e o endereço é preenchido automaticamente.">
+          <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+            <label className="field-group" style={{ maxWidth: 200 }}>
+              <input
+                className="input-field"
+                name="postalCode"
+                required
+                placeholder="CEP*"
+                inputMode="numeric"
+                value={cep}
+                onChange={(e) => {
+                  const f = formatCep(e.target.value);
+                  setCep(f);
+                  if (f.replace(/\D/g, '').length === 8) lookupCep(f);
+                }}
+                onBlur={(e) => lookupCep(e.target.value)}
+              />
+              {cepLoading && <span className="muted" style={{ fontSize: 11, marginTop: 4 }}>Buscando…</span>}
+              {cepError && <span style={{ fontSize: 11, marginTop: 4, color: 'var(--danger, #dc2626)' }}>{cepError}</span>}
+            </label>
+            <label className="field-group" style={{ flex: 1 }}>
+              <input
+                className="input-field"
+                name="addressNumber"
+                placeholder="Número"
+                inputMode="numeric"
+              />
+            </label>
+          </div>
+          {(address.street || address.city) && (
+            <div className="row" style={{ gap: 12 }}>
+              <label className="field-group" style={{ flex: 2 }}>
+                <input className="input-field" name="street" placeholder="Rua" value={address.street} onChange={(e) => setAddress((a) => ({ ...a, street: e.target.value }))} />
+              </label>
+              <label className="field-group" style={{ flex: 1 }}>
+                <input className="input-field" name="neighborhood" placeholder="Bairro" value={address.neighborhood} onChange={(e) => setAddress((a) => ({ ...a, neighborhood: e.target.value }))} />
+              </label>
+            </div>
+          )}
+          {(address.street || address.city) && (
+            <div className="row" style={{ gap: 12 }}>
+              <label className="field-group" style={{ flex: 2 }}>
+                <input className="input-field" name="city" placeholder="Cidade" value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} />
+              </label>
+              <label className="field-group" style={{ flex: 1, maxWidth: 90 }}>
+                <input className="input-field" name="uf" placeholder="UF" maxLength={2} value={address.uf} onChange={(e) => setAddress((a) => ({ ...a, uf: e.target.value.toUpperCase() }))} />
+              </label>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Cupom de desconto" subtitle="Tem um cupom? Aplique antes de finalizar.">
+          {appliedCoupon ? (
+            <div
+              className="row"
+              style={{
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px 14px',
+                borderRadius: 8,
+                background: 'color-mix(in oklab, var(--accent) 10%, transparent)',
+                border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)',
+                fontSize: 13,
+              }}
+            >
+              <span>
+                Cupom <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{appliedCoupon.code}</strong> aplicado ·
+                novo total <strong>R$ {effectivePrice.toFixed(2).replace('.', ',')}</strong>
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={removeCoupon}>Remover</button>
+            </div>
+          ) : (
+            <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+              <label className="field-group" style={{ flex: 1 }}>
+                <input
+                  className="input-field"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Digite o código do cupom"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } }}
+                />
+                {couponError && <span style={{ fontSize: 11.5, marginTop: 4, color: 'var(--danger, #dc2626)' }}>{couponError}</span>}
+              </label>
+              <button type="button" className="btn btn-soft" onClick={applyCoupon} disabled={couponLoading || !couponInput.trim()}>
+                {couponLoading ? 'Validando…' : 'Aplicar'}
+              </button>
+            </div>
+          )}
         </Section>
 
         <Section title="Método de Pagamento" subtitle="Escolha o seu método de pagamento abaixo">
@@ -149,7 +305,7 @@ export default function CheckoutScreen({
                       <select className="input-field" value={installments} onChange={(e) => setInstallments(parseInt(e.target.value, 10))}>
                         {Array.from({ length: maxInstallments }, (_, i) => i + 1).map((n) => (
                           <option key={n} value={n}>
-                            Parcelas: {n}x de R$ {(price / n).toFixed(2).replace('.', ',')}{n === 1 ? ' à vista' : ''}
+                            Parcelas: {n}x de R$ {(effectivePrice / n).toFixed(2).replace('.', ',')}{n === 1 ? ' à vista' : ''}
                           </option>
                         ))}
                       </select>
@@ -189,7 +345,7 @@ export default function CheckoutScreen({
         </div>
       </div>
 
-      <aside style={{ background: 'var(--surface-2, rgba(0,0,0,0.03))', padding: '32px 28px', borderLeft: '1px solid var(--border)' }}>
+      <aside className="checkout-summary" style={{ background: 'var(--surface-2, rgba(0,0,0,0.03))', padding: '32px 28px', borderLeft: '1px solid var(--border)' }}>
         <div className="row" style={{ alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <div
             style={{
@@ -220,6 +376,12 @@ export default function CheckoutScreen({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
           <Row label="Subtotal" value={`R$ ${price.toFixed(2).replace('.', ',')}`} />
+          {appliedCoupon && (
+            <Row
+              label={`Cupom ${appliedCoupon.code}`}
+              value={<span style={{ color: 'var(--accent)' }}>− R$ {(price - effectivePrice).toFixed(2).replace('.', ',')}</span>}
+            />
+          )}
           <Row label="Entrega" value="—" />
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -228,11 +390,11 @@ export default function CheckoutScreen({
                 <strong style={{ fontSize: 16 }}>
                   {isCard && installments > 1
                     ? `${installments}x R$ ${installmentValue.toFixed(2).replace('.', ',')}`
-                    : `R$ ${price.toFixed(2).replace('.', ',')}`}
+                    : `R$ ${effectivePrice.toFixed(2).replace('.', ',')}`}
                 </strong>
                 {isCard && installments > 1 && (
                   <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                    ou R$ {price.toFixed(2).replace('.', ',')} à vista
+                    ou R$ {effectivePrice.toFixed(2).replace('.', ',')} à vista
                   </div>
                 )}
               </span>

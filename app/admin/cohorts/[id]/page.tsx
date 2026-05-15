@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { adminUpdateCohort, adminSetCohortCourses, adminSetCohortMembers } from '@/lib/actions';
+import { DetailSkeleton } from '@/components/skeleton';
 
 type CourseItem = { id: string; title: string; published: boolean; linked: boolean };
 type MemberItem = { id: string; name: string; email: string; role: string; linked: boolean };
@@ -92,7 +93,7 @@ export default function EditCohortPage() {
     });
   }
 
-  if (!data) return <div style={{ padding: 40 }}><p className="muted">Carregando…</p></div>;
+  if (!data) return <DetailSkeleton />;
 
   const filteredCourses = data.courses.filter((c) => !courseSearch || c.title.toLowerCase().includes(courseSearch.toLowerCase()));
   const filteredMembers = data.members.filter((m) =>

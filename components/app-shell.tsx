@@ -15,6 +15,8 @@ type UserData = {
 type BrandData = {
   name: string;
   logoUrl: string | null;
+  faviconUrl: string | null;
+  logoOnly: boolean;
   footer: string | null;
 };
 
@@ -28,17 +30,29 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className={`app${collapsed ? ' sidebar-collapsed' : ''}`}>
+    <div className={`app${collapsed ? ' sidebar-collapsed' : ''}${mobileOpen ? ' mobile-open' : ''}`}>
+      {mobileOpen && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <Sidebar
         user={{ name: user.name, level: user.level, xp: user.xp, role: user.role }}
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
-        brand={brand ? { name: brand.name, logoUrl: brand.logoUrl } : undefined}
+        onMobileClose={() => setMobileOpen(false)}
+        brand={brand ? { name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly } : undefined}
       />
       <div className="main">
-        <Topbar user={{ name: user.name, email: user.email, role: user.role }} />
+        <Topbar
+          user={{ name: user.name, email: user.email, role: user.role }}
+          onMobileMenu={() => setMobileOpen(true)}
+        />
         {children}
         {brand?.footer && (
           <footer

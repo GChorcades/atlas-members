@@ -3,10 +3,19 @@
 import { useState } from 'react';
 import { Icon } from '@/components/icons';
 import { saveSettings } from '@/lib/actions';
+import { DEFAULT_LGPD_TERMS } from '@/lib/lgpd-default';
 
 type Props = {
   initial: Record<string, string>;
   bunnyEnv: { libraryId: string; cdnHostname: string; configured: boolean };
+  messagingEnv: {
+    brevoApiKey: boolean;
+    brevoSenderEmail: string;
+    brevoSenderName: string;
+    zapiInstanceId: boolean;
+    zapiToken: boolean;
+    zapiClientToken: boolean;
+  };
 };
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -34,14 +43,55 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
   );
 }
 
-export default function SettingsClient({ initial, bunnyEnv }: Props) {
-  const [tab, setTab] = useState<'brand' | 'players' | 'payment'>('brand');
+export default function SettingsClient({ initial, bunnyEnv, messagingEnv }: Props) {
+  const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd'>('brand');
+  const [zapiCheck, setZapiCheck] = useState<{ loading: boolean; connected?: boolean; error?: string }>({ loading: false });
+
+  async function checkZapi() {
+    setZapiCheck({ loading: true });
+    try {
+      const res = await fetch('/api/admin/zapi-status');
+      const data = await res.json();
+      setZapiCheck({ loading: false, connected: data.connected, error: data.error });
+    } catch {
+      setZapiCheck({ loading: false, connected: false, error: 'Erro de rede.' });
+    }
+  }
+
+  // Envio de teste (Brevo / Z-API)
+  const [testEmail, setTestEmail] = useState('');
+  const [testPhone, setTestPhone] = useState('');
+  const [testStatus, setTestStatus] = useState<{ channel: 'email' | 'whatsapp'; ok: boolean; msg: string } | null>(null);
+  const [testing, setTesting] = useState<'email' | 'whatsapp' | null>(null);
+
+  async function sendTest(channel: 'email' | 'whatsapp') {
+    const to = channel === 'email' ? testEmail.trim() : testPhone.trim();
+    if (!to) return;
+    setTesting(channel);
+    setTestStatus(null);
+    try {
+      const res = await fetch('/api/admin/test-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, to }),
+      });
+      const data = await res.json();
+      setTestStatus(res.ok
+        ? { channel, ok: true, msg: channel === 'email' ? 'E-mail de teste enviado!' : 'WhatsApp de teste enviado!' }
+        : { channel, ok: false, msg: data.error ?? 'Falha no envio.' });
+    } catch {
+      setTestStatus({ channel, ok: false, msg: 'Erro de rede.' });
+    } finally {
+      setTesting(null);
+    }
+  }
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
   // Brand
   const [brandName, setBrandName] = useState(initial['brand_name'] ?? '');
   const [brandLogo, setBrandLogo] = useState(initial['brand_logo'] ?? '');
+  const [brandLogoOnly, setBrandLogoOnly] = useState(initial['brand_logo_only'] === '1');
   const [brandFavicon, setBrandFavicon] = useState(initial['brand_favicon'] ?? '');
   const [brandColor, setBrandColor] = useState(initial['brand_color'] ?? '');
   const [brandFooter, setBrandFooter] = useState(initial['brand_footer'] ?? '');
@@ -58,6 +108,9 @@ export default function SettingsClient({ initial, bunnyEnv }: Props) {
     (initial['asaas_env'] as 'sandbox' | 'production') ?? 'sandbox'
   );
   const [asaasWebhookSecret, setAsaasWebhookSecret] = useState(initial['asaas_webhook_secret'] ?? '');
+
+  // LGPD
+  const [lgpdTerms, setLgpdTerms] = useState(initial['lgpd_terms'] || DEFAULT_LGPD_TERMS);
 
   async function uploadBrandAsset(file: File, setter: (url: string) => void, setBusy: (v: boolean) => void) {
     setBusy(true);
@@ -104,6 +157,12 @@ export default function SettingsClient({ initial, bunnyEnv }: Props) {
         <button className="tab" data-active={tab === 'payment'} onClick={() => setTab('payment')}>
           <Icon name="certificate" size={14} /> Pagamento
         </button>
+        <button className="tab" data-active={tab === 'messaging'} onClick={() => setTab('messaging')}>
+          <Icon name="chat" size={14} /> Mensagens
+        </button>
+        <button className="tab" data-active={tab === 'lgpd'} onClick={() => setTab('lgpd')}>
+          <Icon name="file" size={14} /> LGPD
+        </button>
       </div>
 
       {/* ─── MARCA ──────────────────────────────────────── */}
@@ -146,6 +205,23 @@ export default function SettingsClient({ initial, bunnyEnv }: Props) {
                   previewSize={32}
                 />
               </div>
+
+              {brandLogo && (
+                <label className="row" style={{ gap: 8, fontSize: 13, alignItems: 'flex-start' }}>
+                  <input
+                    type="checkbox"
+                    checked={brandLogoOnly}
+                    onChange={(e) => setBrandLogoOnly(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    Mostrar apenas o logo (ocultar o nome da plataforma ao lado)
+                    <span className="muted" style={{ display: 'block', fontSize: 11.5, marginTop: 2 }}>
+                      Quando o menu lateral estiver recolhido, o favicon é usado como ícone.
+                    </span>
+                  </span>
+                </label>
+              )}
 
               <div className="field-group">
                 <label className="field-label">Cor primária (accent)</label>
@@ -196,6 +272,7 @@ export default function SettingsClient({ initial, bunnyEnv }: Props) {
                   brand_favicon: brandFavicon,
                   brand_color: brandColor,
                   brand_footer: brandFooter,
+                  brand_logo_only: brandLogoOnly ? '1' : '',
                 })}
               >
                 <Icon name="check" size={14} /> {saving === 'brand' ? 'Salvando…' : 'Salvar marca'}
@@ -418,6 +495,158 @@ export default function SettingsClient({ initial, bunnyEnv }: Props) {
                   disabled={saving === 'asaas'}
                 >
                   {saved === 'asaas' ? <><Icon name="check" size={14} /> Salvo!</> : saving === 'asaas' ? 'Salvando…' : <><Icon name="check" size={14} /> Salvar Asaas</>}
+                </button>
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ─── MENSAGENS ──────────────────────────────────── */}
+      {tab === 'messaging' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SectionCard
+            title="Brevo — E-mail transacional"
+            subtitle="Envio de e-mails (boas-vindas, reset de senha, confirmação de compra, mensagens manuais)."
+            icon="chat"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
+                <StatusBadge ok={messagingEnv.brevoApiKey} label="API key" />
+                <StatusBadge ok={!!messagingEnv.brevoSenderEmail} label="Remetente" />
+              </div>
+              <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div><span className="muted">Remetente:</span> {messagingEnv.brevoSenderName || '—'} {messagingEnv.brevoSenderEmail ? `<${messagingEnv.brevoSenderEmail}>` : ''}</div>
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                Configurado por variáveis de ambiente (<code>BREVO_API_KEY</code>, <code>BREVO_SENDER_EMAIL</code>, <code>BREVO_SENDER_NAME</code>) na Vercel.
+                O e-mail remetente precisa estar verificado no painel do Brevo.
+              </p>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div className="field-label" style={{ marginBottom: 8 }}>Enviar e-mail de teste</div>
+                <div className="row gap-8" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <input
+                    className="input-field"
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="destinatario@exemplo.com"
+                    style={{ flex: '1 1 220px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-sm"
+                    onClick={() => sendTest('email')}
+                    disabled={testing === 'email' || !testEmail.trim()}
+                  >
+                    {testing === 'email' ? 'Enviando…' : 'Enviar teste'}
+                  </button>
+                </div>
+                {testStatus?.channel === 'email' && (
+                  <p style={{ fontSize: 12, marginTop: 6, color: testStatus.ok ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)' }}>
+                    {testStatus.ok ? '✓ ' : '✕ '}{testStatus.msg}
+                  </p>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Z-API — WhatsApp"
+            subtitle="Envio de mensagens por WhatsApp."
+            icon="chat"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
+                <StatusBadge ok={messagingEnv.zapiInstanceId} label="Instance ID" />
+                <StatusBadge ok={messagingEnv.zapiToken} label="Token" />
+                <StatusBadge ok={messagingEnv.zapiClientToken} label="Client-Token" />
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                Configurado por variáveis de ambiente (<code>ZAPI_INSTANCE_ID</code>, <code>ZAPI_TOKEN</code>, <code>ZAPI_CLIENT_TOKEN</code>) na Vercel.
+              </p>
+              <div className="row gap-10" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-soft btn-sm" onClick={checkZapi} disabled={zapiCheck.loading}>
+                  {zapiCheck.loading ? 'Verificando…' : 'Testar conexão do WhatsApp'}
+                </button>
+                {zapiCheck.connected === true && (
+                  <span className="chip chip-success" style={{ fontSize: 11 }}>✓ WhatsApp conectado</span>
+                )}
+                {zapiCheck.connected === false && (
+                  <span style={{ fontSize: 12, color: 'var(--danger, #dc2626)' }}>
+                    ✕ Não conectado{zapiCheck.error ? ` — ${zapiCheck.error}` : ''}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div className="field-label" style={{ marginBottom: 8 }}>Enviar WhatsApp de teste</div>
+                <div className="row gap-8" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <input
+                    className="input-field"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    inputMode="tel"
+                    style={{ flex: '1 1 220px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-sm"
+                    onClick={() => sendTest('whatsapp')}
+                    disabled={testing === 'whatsapp' || !testPhone.trim()}
+                  >
+                    {testing === 'whatsapp' ? 'Enviando…' : 'Enviar teste'}
+                  </button>
+                </div>
+                {testStatus?.channel === 'whatsapp' && (
+                  <p style={{ fontSize: 12, marginTop: 6, color: testStatus.ok ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)' }}>
+                    {testStatus.ok ? '✓ ' : '✕ '}{testStatus.msg}
+                  </p>
+                )}
+                <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                  Aceita número com DDD; o código do Brasil (55) é adicionado automaticamente.
+                </p>
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ─── LGPD ───────────────────────────────────────── */}
+      {tab === 'lgpd' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SectionCard
+            title="Termos LGPD e propriedade intelectual"
+            subtitle="Texto exibido aos alunos na tela de aceite (/terms) no primeiro acesso."
+            icon="file"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+                Edite em markdown: <code>## Título</code>, <code>**negrito**</code>, <code>*itálico*</code>, listas com <code>-</code>.
+                Alunos que ainda não aceitaram verão a versão atualizada no próximo acesso.
+              </p>
+              <textarea
+                className="input-field"
+                value={lgpdTerms}
+                onChange={(e) => setLgpdTerms(e.target.value)}
+                style={{ minHeight: 420, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 13, lineHeight: 1.6 }}
+              />
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setLgpdTerms(DEFAULT_LGPD_TERMS)}
+                >
+                  Restaurar texto padrão
+                </button>
+                <button
+                  className="btn btn-accent"
+                  onClick={() => handleSave('lgpd', { lgpd_terms: lgpdTerms })}
+                  disabled={saving === 'lgpd'}
+                >
+                  {saved === 'lgpd' ? <><Icon name="check" size={14} /> Salvo!</> : saving === 'lgpd' ? 'Salvando…' : <><Icon name="check" size={14} /> Salvar LGPD</>}
                 </button>
               </div>
             </div>

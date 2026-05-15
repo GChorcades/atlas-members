@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { courses, modules, lessons, enrollments, lessonProgress, notes as notesTable, comments as commentsTable, users, settings } from '@/db/schema';
+import { courses, modules, lessons, enrollments, lessonProgress, notes as notesTable, comments as commentsTable, users, settings, materials } from '@/db/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; lessonId: string }> }) {
@@ -78,6 +78,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     .where(and(eq(notesTable.userId, session.user.id), eq(notesTable.lessonId, lessonId)))
     .orderBy(asc(notesTable.createdAt));
 
+  // Materials
+  const lessonMaterials = await db
+    .select()
+    .from(materials)
+    .where(eq(materials.lessonId, lessonId))
+    .orderBy(asc(materials.createdAt));
+
   // Comments
   const rawComments = await db
     .select({ comment: commentsTable, user: users })
@@ -107,6 +114,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     prevLessonId,
     nextLessonId,
     outline,
+    materials: lessonMaterials,
     notes: userNotes,
     comments: rawComments.map(({ comment, user }) => ({
       id: comment.id,

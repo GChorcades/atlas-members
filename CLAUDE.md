@@ -2,7 +2,7 @@
 
 # Atlas Members — Estado do projeto
 
-Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas).
+Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas), email transacional via **Brevo**, WhatsApp via **Z-API**, IA via **OpenAI** (`gpt-4o` / `gpt-4o-mini`).
 
 **Repositório:** https://github.com/GChorcades/atlas-members (público). Branch principal: `main`. Credencial salva no macOS keychain — `git push` funciona direto sem prompt.
 
@@ -21,25 +21,41 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - `app/(app)/` — rotas autenticadas do aluno (dashboard, catalog, courses, profile, progress, trails)
 - `app/admin/` — painel admin (cursos, alunos, turmas/cohorts, comentários, configurações, checkouts)
 - `app/checkout/[slug]/` — checkout público (sem auth) + página de sucesso com polling
+- `app/login | register | forgot-password | reset-password/[token]` — auth público; cada rota é `page.tsx` (server, busca brand) + `*-form.tsx` (client). Header de marca via `<AuthBrand />`
+- `app/terms/` — aceite de termos LGPD obrigatório no primeiro acesso
 - `app/api/` — endpoints; webhook Asaas em `/api/webhooks/asaas`
-- `components/app-shell.tsx` + `sidebar.tsx` + `topbar.tsx` — shell compartilhado (admin + área do aluno)
+- `components/app-shell.tsx` + `sidebar.tsx` + `topbar.tsx` — shell compartilhado (admin + área do aluno); sidebar vira drawer no mobile
+- `components/markdown-editor.tsx` + `markdown-renderer.tsx` + `code-block.tsx` — material didático em markdown (code-block tem botão copiar)
+- `components/bunny-player.tsx` — player BunnyNet controlável via Player.js (`seekTo`, `getCurrentTime`)
+- `components/skeleton.tsx` — kit de skeletons; `loading.tsx` em `(app)/`, `admin/` e `checkout/[slug]/`
+- `components/working-indicator.tsx` — feedback animado para tarefas longas de IA (transcrição, resumo, material, capítulos)
+- `components/auth-brand.tsx` — header de marca das telas de auth
 - `lib/actions.ts` — todas as server actions (admin + aluno + público). Convenção: actions admin começam com `admin*`; públicas com `*Public*`
 - `lib/asaas.ts` — client da API Asaas
+- `lib/brevo.ts` — `sendEmail()` (email transacional Brevo)
+- `lib/zapi.ts` — `sendWhatsApp()` (normaliza telefone BR, envia via Z-API)
+- `lib/notifications.ts` — orquestra email + WhatsApp em paralelo; templates: `notifyWelcome`, `notifyPasswordReset`, `notifyForgotPassword`, `notifyPaymentConfirmed`
+- `lib/reset-token.ts` — tokens HMAC assinados (TTL 1h) para "esqueci minha senha", sem tabela no DB
 - `lib/brand.ts` — `getBrand()` (cache) lê settings de identidade
-- `lib/course-stats.ts` — `getCourseStats(courseIds)` retorna `{ lessonCount, totalSeconds, durationLabel, studentCount }` real (NÃO use as colunas mocadas `courses.lessonCount/duration/students`)
+- `lib/course-stats.ts` — `getCourseStats(courseIds)` retorna `{ lessonCount, totalSeconds, durationLabel, studentCount }` real (NÃO use as colunas mocadas `courses.lessonCount/duration`)
 
 ## Tabelas principais
 
-- `users` — perfil + `plan`, `cpfCnpj`, `asaasCustomerId`, `suspended`, `passwordHash`
-- `courses` — `published` controla visibilidade. **`coverImage` (URL Blob) tem prioridade sobre `coverBg` (gradiente)**. `lessonCount/duration/students` são mocados — sempre derive via `getCourseStats`
+- `users` — perfil + `plan`, `cpfCnpj`, `asaasCustomerId`, `suspended`, `passwordHash`, `termsAcceptedAt` (null = ainda não aceitou os termos LGPD)
+- `courses` — `published` controla visibilidade. **`coverImage` (URL Blob) tem prioridade sobre `coverBg` (gradiente)**. `lessonCount/duration` são mocados — derive via `getCourseStats`. **`students` é um número definido manualmente pelo admin** (editor do curso) e exibido como tal — NÃO é derivado
 - `modules`, `lessons` — `lessons.published` controla visibilidade; estudante só vê publicadas
+- `lessons.content` — material didático em markdown (aba "Material"); `lessons.transcript` (fonte interna p/ IA, NÃO aparece para o aluno); `lessons.aiSummary`; `lessons.chapters` (JSON `[{time,title}]`)
 - `lessons.bunnyVideoId | pandaVideoId | videoUrl` — três fontes de vídeo, priorizadas nessa ordem no player
+- `materials` — arquivos anexos por aula (PDF/ZIP/DOC/XLS/imagem), upload em Vercel Blob
 - `enrollments` — `active`, `expiresAt` permitem suspender acesso a curso específico
 - `payments`, `subscriptions` — integração Asaas; `payments.courseId` linka a curso para auto-matrícula no webhook
-- `checkouts` — config pública por curso (`slug` único, `price`, `allowPix/Boleto/CreditCard`, `maxInstallments`)
+- `checkouts` — config pública por curso (`slug` único, `price`, `allowPix/Boleto/CreditCard`, `maxInstallments`, `socialProof`)
+- `checkout_offers` — ofertas/preços alternativos de um checkout, cada uma com `slug` próprio (link `/checkout/[slug-da-oferta]`). Em Admin → Checkouts, os links das ofertas aparecem direto no card (sem expandir o editor), prontos para copiar
+- `coupons` — cupons por checkout: `code`, `discountType` (`percent`/`fixed`), `discountValue`, `expiresAt` (calculado na criação a partir de validade em dias)
 - `comments` — `parentId` (auto-ref, sem FK) para threading + `imageUrl` para anexos
 - `cohorts`, `cohort_courses`, `cohort_members` — turmas
-- `settings` — key/value: chaves usadas hoje: `panda_api_key`, `panda_player_id`, `asaas_api_key`, `asaas_env`, `asaas_webhook_secret`, `brand_name`, `brand_logo`, `brand_favicon`, `brand_color`, `brand_footer`
+- `notes` — `notes.timestamp` guarda o tempo do vídeo em segundos (string); clicável p/ pular no player BunnyNet
+- `settings` — key/value: `panda_api_key`, `panda_player_id`, `asaas_api_key`, `asaas_env`, `asaas_webhook_secret`, `brand_name`, `brand_logo`, `brand_favicon`, `brand_color`, `brand_footer`, `brand_logo_only` (`'1'` = só logo, sem nome), `lgpd_terms` (texto LGPD editável)
 
 ## Convenções
 
@@ -49,12 +65,20 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - **Upload**: `POST /api/upload` (admin-only) aceita imagens até 5MB e retorna URL do Vercel Blob.
 - **Webhook Asaas**: header `asaas-access-token` validado contra `asaas_webhook_secret`. `x-test-mode: 1` só funciona quando `NODE_ENV !== 'production'`. Auto-matricula no curso quando `payment.courseId` está setado e evento é `RECEIVED`/`CONFIRMED`.
 - **Polling de pagamento**: `/api/checkout/payment-status?id=` consulta Asaas direto se webhook atrasar — atualiza DB e matricula como fallback.
-- **Layouts**: alunos `(app)/layout.tsx` redirecionam pra `/login` se `dbUser.suspended`. Sempre carregam `brand` e passam pro `AppShell`.
+- **Layouts**: alunos `(app)/layout.tsx` e `admin/layout.tsx` redirecionam pra `/login` se `dbUser.suspended`, e pra `/terms` se `termsAcceptedAt` for null. Sempre carregam `brand` e passam pro `AppShell`.
+- **Notificações**: sempre disparadas com `await` (não fire-and-forget) — a Vercel mata a function antes do fetch terminar, causando `SocketError: other side closed`. Falhas são logadas mas não quebram o fluxo principal.
+- **Senha**: troca self-service em `/api/profile/password` (exige senha atual); reset pelo admin em `/api/admin/students/[id]/password`; "esqueci minha senha" em `/forgot-password` → token HMAC → `/reset-password/[token]`. Mínimo 6 caracteres.
+- **Material didático**: parser markdown próprio (negrito, itálico, código, blocos, listas, headings, imagens, links) — `markdown-renderer.tsx` renderiza como React elements puros (XSS-safe por construção do React, sem injeção de HTML cru). Imagens inline via `/api/admin/upload-inline` (botão ou Ctrl+V). "Gerar com IA" via `/api/ai/material`.
+- **Cupons/ofertas**: o slug em `/checkout/[slug]` resolve oferta OU checkout (`resolveCheckoutSlug` em `actions.ts`). Desconto de cupom é SEMPRE re-validado no servidor em `createPublicCheckoutCharge` — nunca confie no preço do cliente.
+- **Responsivo (≤ 760px)**: sidebar vira drawer (hamburger no topbar); menu admin vira faixa horizontal rolável; checkout empilha em 1 coluna; lesson page esconde breadcrumbs e reduz título.
 
 ## Player de vídeo
 
 - Admin → editor de aula só mostra os players configurados (Bunny via `NEXT_PUBLIC_BUNNY_LIBRARY_ID`; Panda via `panda_api_key` + `panda_player_id`). URL (YouTube/Vimeo) sempre disponível.
 - Helper `urlToEmbed` (duplicado em `app/(app)/courses/[id]/lessons/[lessonId]/page.tsx` e no editor admin) converte URLs YouTube/Vimeo para embeds.
+- **Seek (capítulos + notas com timestamp): só BunnyNet.** O `BunnyPlayer` usa Player.js (carregado da CDN do Bunny) para `seekTo`/`getCurrentTime`. YouTube/Panda usam `<iframe>` simples, sem controle.
+- **Transcrição:** `/api/admin/lessons/[id]/transcribe` extrai o áudio do vídeo Bunny com `ffmpeg` (mono/16kHz/Opus, evita o limite de 25 MB da OpenAI) e transcreve com `gpt-4o-transcribe`. Exige "MP4 Fallback" ativado na biblioteca BunnyNet.
+- **Capítulos:** `/api/ai/chapters` gera `[{time,title}]` da transcrição; editável na aba "Capítulos"; clicáveis na aula (só Bunny).
 
 ## Gotchas que custaram tempo
 
@@ -63,10 +87,34 @@ Plataforma de área de membros (LMS + checkout) construída com **Next.js 16 App
 - **Asaas `creditCardHolderInfo`** exige `addressNumber` — usar `'S/N'` se não coletado.
 - **Cartão com parcelamento**: payment row inserido é o da primeira parcela; usar `firstId` retornado de `asaasListPaymentsByInstallment` no fluxo do checkout público pra evitar 404 na success page.
 - **Hydration mismatch com `<style>` no head**: extensões de browser injetam estilos. `suppressHydrationWarning` no `<html>` e no `<style>` do `app/layout.tsx` está em vigor — não remova.
+- **`outputFileTracingIncludes` (next.config.ts)**: a chave é um glob — NÃO use `[lessonId]` (colchetes viram classe de caractere). Use `/api/**`. É o que empacota o binário do `ffmpeg-static` na função de transcrição.
+- **Favicon**: NÃO criar `app/favicon.ico` — o Next serve esse arquivo automaticamente e ele sobrepõe o favicon da marca (`generateMetadata` → `icons`).
+- **Notificações com `await`**: nunca fire-and-forget — a Vercel encerra a function e o fetch é cortado (`SocketError: other side closed`).
+
+## Integrações externas (env vars)
+
+- **Brevo** (email): `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`. O email remetente precisa estar verificado no painel Brevo.
+- **Z-API** (WhatsApp): `ZAPI_INSTANCE_ID`, `ZAPI_TOKEN`, `ZAPI_CLIENT_TOKEN` (header `Client-Token`).
+- **OpenAI**: `OPENAI_API_KEY` — `/api/ai/chat`, `/api/ai/summary`, `/api/ai/material`, `/api/ai/chapters` (`gpt-4o`); `/api/social-proof` (`gpt-4o-mini`); `/api/admin/lessons/[id]/transcribe` (`gpt-4o-transcribe`).
+- **ffmpeg-static**: dependência npm — binário do ffmpeg para extrair áudio na transcrição. `serverExternalPackages` + `outputFileTracingIncludes` no `next.config.ts` garantem o empacotamento.
+- **ViaCEP**: API pública gratuita (sem chave) — busca de endereço por CEP no checkout.
+- **Mensagens admin**: aba "Mensagens" nas Configurações mostra status Brevo/Z-API + envio de teste; `/api/admin/zapi-status` testa a conexão do WhatsApp; modal de mensagem no detalhe do aluno (`adminSendMessage`).
+- Env vars são adicionadas na Vercel via CLI; o ambiente **Preview** exige `--value` + branch e às vezes não pega pela CLI — conferir no dashboard.
+
+## IA / notificações
+
+- Email + WhatsApp disparam em: cadastro (boas-vindas), reset de senha pelo admin, "esqueci minha senha", pagamento confirmado (webhook Asaas).
+- `/api/social-proof` gera 25 nomes/cidades BR fictícios via IA, com cache em memória de 1h e fallback hardcoded. Toaster só aparece se `checkouts.socialProof` estiver ativo.
+
+## Próximo grande passo: multi-tenant
+
+Decisão tomada: transformar o app em multi-tenant (banco compartilhado + `tenant_id`, acesso por subdomínio primeiro). Haverá uma área "super admin" para criar tenants. Domínio próprio via API da Vercel fica para fase futura. Plano em fases já alinhado — Fase 1 = schema com `tenant_id` + migração dos dados atuais para o primeiro tenant.
 
 ## Pendências conhecidas
 
-- Senha temporária pós-checkout aparece só no console; falta email de boas-vindas / fluxo de "esqueci minha senha".
 - Public checkout permite paste de imagem em comentários mas não há moderação automática.
 - `coverImage` no editor admin aceita upload mas a tabela `cohorts`/`trails` ainda não tem imagem.
 - Cartão de crédito vai como string no payload da Asaas — pra produção, considerar tokenização (PCI).
+- Texto dos termos LGPD é editável em Configurações → LGPD (`settings.lgpd_terms`); o padrão está em `lib/lgpd-default.ts` — revisar com jurídico antes de produção.
+- Endereço do CEP é exibido pro cliente conferir, mas só o `postalCode` é enviado ao Asaas.
+- Transcrição: vídeos muito longos podem estourar 25 MB mesmo só com áudio — particionamento automático não implementado.

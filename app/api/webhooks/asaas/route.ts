@@ -4,6 +4,7 @@ import { users, settings, payments, enrollments } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { mapAsaasStatusToOurs } from '@/lib/asaas';
+import { notifyPaymentConfirmed } from '@/lib/notifications';
 
 type AsaasEvent =
   | 'PAYMENT_RECEIVED'
@@ -147,7 +148,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, note: 'customer not resolved' });
   }
 
-  const [user] = await db.select({ id: users.id, plan: users.plan })
+  const [user] = await db.select({ id: users.id, plan: users.plan, name: users.name, email: users.email, phone: users.phone })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
@@ -165,6 +166,16 @@ export async function POST(req: Request) {
       if (plan !== null) {
         await db.update(users).set({ plan, updatedAt: new Date() }).where(eq(users.id, user.id));
         console.log(`[asaas-webhook] Updated ${email} → plan: ${plan}`);
+      }
+      if (event !== 'SUBSCRIPTION_RENEWED') {
+        try {
+          await notifyPaymentConfirmed(
+            { name: user.name, email: user.email, phone: user.phone },
+            { description: payment.description ?? 'Acesso à plataforma', value: payment.value },
+          );
+        } catch (err) {
+          console.error('[asaas-webhook] notify falhou', err);
+        }
       }
       break;
     }

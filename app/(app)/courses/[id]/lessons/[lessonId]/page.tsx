@@ -1,16 +1,28 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
 import { markLessonDone, addNote, addComment, deleteComment } from '@/lib/actions';
+import { MarkdownRenderer } from '@/components/markdown-renderer';
+import { BunnyPlayer, type BunnyPlayerHandle } from '@/components/bunny-player';
+
+function fmtTime(total: number): string {
+  const s = Math.max(0, Math.round(total));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
 
 type LessonData = {
   lesson: {
     id: string; title: string; type: string; duration: string | null;
     videoUrl: string | null; bunnyVideoId: string | null; pandaVideoId: string | null;
     content: string | null; transcript: string | null;
+    chapters: string | null;
     aiSummary: string | null; done: boolean; watchedSeconds: number;
     pandaPlayerId: string | null;
   };
@@ -22,6 +34,7 @@ type LessonData = {
     id: string; title: string; position: number; duration: string | null;
     lessons: { id: string; title: string; duration: string | null; type: string; done: boolean }[];
   }[];
+  materials: { id: string; name: string; url: string; size: string | null; type: string }[];
   notes: { id: string; text: string; timestamp: string | null; createdAt: string }[];
   comments: Comment[];
 };
@@ -43,9 +56,11 @@ type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export default function LessonPage() {
   const params = useParams<{ id: string; lessonId: string }>();
+  const searchParams = useSearchParams();
+  const playerRef = useRef<BunnyPlayerHandle>(null);
   const [data, setData] = useState<LessonData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('notes');
+  const [tab, setTab] = useState(searchParams.get('tab') ?? 'notes');
   const [openModules, setOpenModules] = useState<Set<string>>(new Set());
   const [noteText, setNoteText] = useState('');
   const [commentText, setCommentText] = useState('');
@@ -99,7 +114,14 @@ export default function LessonPage() {
 
   async function handleAddNote() {
     if (!noteText.trim()) return;
-    await addNote(lesson.id, noteText, lesson.duration ?? undefined);
+    let stamp: string | undefined;
+    if (playerRef.current) {
+      try {
+        const t = await playerRef.current.getCurrentTime();
+        if (t > 0) stamp = String(Math.round(t));
+      } catch { /* sem timestamp */ }
+    }
+    await addNote(lesson.id, noteText, stamp);
     setNoteText('');
     fetch(`/api/courses/${params.id}/lessons/${params.lessonId}`).then((r) => r.json()).then(setData);
   }
@@ -198,19 +220,29 @@ export default function LessonPage() {
     : null;
   const videoEmbedUrl = bunnyEmbedUrl ?? pandaEmbedUrl ?? urlEmbedUrl;
 
+  // Capítulos só são navegáveis quando o vídeo é da BunnyNet (player controlável).
+  let chapters: { time: number; title: string }[] = [];
+  if (bunnyEmbedUrl && lesson.chapters) {
+    try {
+      const parsed = JSON.parse(lesson.chapters);
+      if (Array.isArray(parsed)) chapters = parsed;
+    } catch { /* ignora JSON inválido */ }
+  }
+
+  const hasMaterial = !!(lesson.content?.trim() || (data.materials && data.materials.length > 0));
   const TABS = [
     { id: 'notes', label: 'Minhas notas' },
+    ...(hasMaterial ? [{ id: 'material', label: 'Material' }] : []),
     { id: 'comments', label: `Comentários (${comments.length})` },
-    { id: 'transcript', label: 'Transcrição' },
     { id: 'summary', label: 'Resumo IA' },
     { id: 'ai', label: '✦ Assistente IA' },
   ];
 
   return (
-    <div className="content content-wide fade-up" style={{ maxWidth: '100%', padding: '24px 32px' }}>
+    <div className="content content-wide fade-up lesson-page-wrapper" style={{ maxWidth: '100%', padding: '24px 32px' }}>
       {celebrate && <Celebration />}
       {/* Breadcrumbs */}
-      <div className="row gap-8" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <div className="row gap-8 lesson-breadcrumbs" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
         <Link href="/catalog" style={{ color: 'inherit' }}>Meus cursos</Link>
         <Icon name="chevron-right" size={14} style={{ opacity: 0.5 }} />
         <Link href={`/courses/${course.id}`} style={{ color: 'inherit' }}>{course.title}</Link>
@@ -222,7 +254,9 @@ export default function LessonPage() {
         <div style={{ minWidth: 0 }}>
           {/* Video Player */}
           <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', background: '#000', aspectRatio: '16 / 9' }}>
-            {videoEmbedUrl ? (
+            {videoEmbedUrl && bunnyEmbedUrl ? (
+              <BunnyPlayer ref={playerRef} src={videoEmbedUrl} />
+            ) : videoEmbedUrl ? (
               <iframe
                 src={videoEmbedUrl}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
@@ -246,17 +280,41 @@ export default function LessonPage() {
             )}
           </div>
 
+          {/* Capítulos do vídeo */}
+          {chapters.length > 0 && (
+            <div className="card" style={{ padding: '12px 14px', marginTop: 14 }}>
+              <div className="muted" style={{ fontSize: 11.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                Capítulos
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {chapters.map((c, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => playerRef.current?.seekTo(c.time)}
+                    className="chapter-row"
+                  >
+                    <span className="mono" style={{ fontSize: 12, color: 'var(--accent)', flexShrink: 0, width: 56 }}>
+                      {fmtTime(c.time)}
+                    </span>
+                    <span style={{ fontSize: 13.5 }}>{c.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Title + nav */}
-          <div className="row" style={{ justifyContent: 'space-between', marginTop: 20, alignItems: 'flex-start', gap: 12 }}>
+          <div className="row lesson-header-row" style={{ justifyContent: 'space-between', marginTop: 20, alignItems: 'flex-start', gap: 12 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="muted" style={{ fontSize: 12.5 }}>Módulo {String(mod.position + 1).padStart(2, '0')} · {mod.title}</div>
-              <h1 className="h1" style={{ marginTop: 6, fontSize: 24 }}>{lesson.title}</h1>
+              <div className="muted lesson-module-eyebrow" style={{ fontSize: 12.5 }}>Módulo {String(mod.position + 1).padStart(2, '0')} · {mod.title}</div>
+              <h1 className="h1 lesson-title-h1" style={{ marginTop: 6, fontSize: 24 }}>{lesson.title}</h1>
               <div className="row gap-16 mt-12 muted" style={{ fontSize: 13 }}>
                 <span className="row gap-4"><Icon name="clock" size={13} /> {lesson.duration}</span>
                 <span className="row gap-4">{course.instructor}</span>
               </div>
             </div>
-            <div className="row gap-8" style={{ flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div className="row gap-8 lesson-header-actions" style={{ flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button className={`btn btn-sm ${lesson.done ? 'btn-soft' : 'btn-accent'}`} onClick={handleMarkDone}>
                 <Icon name="check" size={14} /> {lesson.done ? 'Concluída' : 'Marcar concluída'}
               </button>
@@ -288,15 +346,30 @@ export default function LessonPage() {
             <div className="col gap-16" style={{ maxWidth: 720 }}>
               <div className="card" style={{ padding: 16 }}>
                 <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Anote uma ideia, pergunta ou link…" style={{ width: '100%', border: 0, background: 'transparent', resize: 'none', minHeight: 60, font: 'inherit', color: 'inherit', outline: 'none', padding: 0 }} />
-                <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-                  <button className="btn btn-accent btn-sm" onClick={handleAddNote}>Salvar nota</button>
+                <div className="row" style={{ justifyContent: 'space-between', marginTop: 8, alignItems: 'center' }}>
+                  {bunnyEmbedUrl && (
+                    <span className="muted" style={{ fontSize: 11.5 }}>O tempo atual do vídeo é salvo junto com a nota.</span>
+                  )}
+                  <button className="btn btn-accent btn-sm" onClick={handleAddNote} style={{ marginLeft: 'auto' }}>Salvar nota</button>
                 </div>
               </div>
               <div className="col gap-8">
                 {notes.map((n) => (
                   <div key={n.id} className="card" style={{ padding: 16 }}>
                     <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                      {n.timestamp && <div className="chip mono" style={{ background: 'var(--bg-muted)' }}><Icon name="play" size={9} /> {n.timestamp}</div>}
+                      {n.timestamp && /^\d+$/.test(n.timestamp) && bunnyEmbedUrl ? (
+                        <button
+                          type="button"
+                          className="chip mono"
+                          onClick={() => playerRef.current?.seekTo(parseInt(n.timestamp!, 10))}
+                          style={{ background: 'var(--accent-soft)', color: 'var(--accent-soft-fg)', border: 0, cursor: 'pointer' }}
+                          title="Ir para este ponto do vídeo"
+                        >
+                          <Icon name="play" size={9} /> {fmtTime(parseInt(n.timestamp, 10))}
+                        </button>
+                      ) : n.timestamp ? (
+                        <div className="chip mono" style={{ background: 'var(--bg-muted)' }}><Icon name="play" size={9} /> {n.timestamp}</div>
+                      ) : <span />}
                       <span className="muted" style={{ fontSize: 11.5 }}>{new Date(n.createdAt).toLocaleDateString('pt-BR')}</span>
                     </div>
                     <div style={{ fontSize: 14, lineHeight: 1.55 }}>{n.text}</div>
@@ -342,6 +415,54 @@ export default function LessonPage() {
                 />
               ))}
               {comments.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Seja o primeiro a comentar.</p>}
+            </div>
+          )}
+
+          {/* Material */}
+          {tab === 'material' && (
+            <div style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {lesson.content?.trim() && (
+                <div className="card prose-content" style={{ padding: 28, fontSize: 14.5, lineHeight: 1.75 }}>
+                  <MarkdownRenderer source={lesson.content} />
+                </div>
+              )}
+              {data.materials && data.materials.length > 0 && (
+                <div className="card" style={{ padding: 24 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Arquivos para download</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {data.materials.map((m) => (
+                      <a
+                        key={m.id}
+                        href={m.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="row"
+                        style={{
+                          padding: '12px 14px',
+                          background: 'var(--bg-muted)',
+                          borderRadius: 8,
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          textDecoration: 'none',
+                          color: 'var(--text)',
+                          gap: 12,
+                        }}
+                      >
+                        <div className="row gap-12" style={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-soft-fg)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>
+                            {m.type}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                            <div className="mono muted" style={{ fontSize: 11 }}>{m.size}</div>
+                          </div>
+                        </div>
+                        <Icon name="download" size={15} style={{ color: 'var(--text-muted)' }} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -16,30 +16,39 @@ type Props = {
   user: { name: string; level: number; xp: number; role: string };
   collapsed: boolean;
   onToggle: () => void;
-  brand?: { name: string; logoUrl: string | null };
+  onMobileClose?: () => void;
+  brand?: { name: string; logoUrl: string | null; faviconUrl: string | null; logoOnly: boolean };
 };
 
-export function Sidebar({ user, collapsed, onToggle, brand }: Props) {
+export function Sidebar({ user, collapsed, onToggle, onMobileClose, brand }: Props) {
   const pathname = usePathname();
   const initials = user.name.split(' ').map((p) => p[0]).slice(0, 2).join('');
   const brandName = brand?.name ?? 'Atlas';
   const brandMark = (brandName[0] ?? 'A').toUpperCase();
+  // Recolhido: usa o favicon (ícone quadrado); expandido: usa o logo.
+  const markSrc = collapsed ? (brand?.faviconUrl || brand?.logoUrl) : brand?.logoUrl;
+  // Nome ao lado do logo só quando não há logo OU a opção "apenas logo" está desligada.
+  const logoOnly = !!(brand?.logoUrl && brand?.logoOnly);
+  const showName = !collapsed && !logoOnly;
+  // Logo em largura total quando "apenas logo" está ativo e a sidebar está expandida.
+  const fullWidthLogo = !collapsed && logoOnly && !!brand?.logoUrl;
 
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        {brand?.logoUrl ? (
+        {markSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={brand.logoUrl}
+            key={`${markSrc}-${collapsed ? 'c' : 'e'}-${fullWidthLogo ? 'full' : 'mark'}`}
+            src={markSrc}
             alt={brandName}
-            className="sidebar-brand-mark"
+            className={fullWidthLogo ? 'sidebar-brand-logo-full' : 'sidebar-brand-mark'}
             style={{ objectFit: 'contain', background: 'transparent', padding: 2 }}
           />
         ) : (
           <span className="sidebar-brand-mark">{brandMark}</span>
         )}
-        <span className="sidebar-brand-text">{brandName}</span>
+        {showName && <span className="sidebar-brand-text">{brandName}</span>}
         <button
           className="sidebar-collapse-arrow"
           onClick={onToggle}
@@ -62,6 +71,7 @@ export function Sidebar({ user, collapsed, onToggle, brand }: Props) {
           className="nav-item"
           data-active={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
           title={collapsed ? item.label : undefined}
+          onClick={onMobileClose}
         >
           <Icon name={item.icon} size={18} />
           <span>{item.label}</span>
@@ -74,6 +84,7 @@ export function Sidebar({ user, collapsed, onToggle, brand }: Props) {
           className="nav-item"
           data-active={pathname.startsWith('/admin')}
           title={collapsed ? 'Admin' : undefined}
+          onClick={onMobileClose}
           style={{ marginTop: 2 }}
         >
           <Icon name="settings" size={18} />

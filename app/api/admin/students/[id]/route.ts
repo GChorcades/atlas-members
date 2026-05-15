@@ -137,6 +137,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       cpfCnpj: user.cpfCnpj,
       asaasCustomerId: user.asaasCustomerId,
       suspended: user.suspended,
+      termsAcceptedAt: user.termsAcceptedAt,
       createdAt: user.createdAt,
     },
     payments: userPayments,

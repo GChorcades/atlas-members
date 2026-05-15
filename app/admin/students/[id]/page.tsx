@@ -18,6 +18,9 @@ import {
 } from '@/lib/actions';
 import ChargeModal from './charge-modal';
 import SubscriptionModal from './subscription-modal';
+import PasswordModal from './password-modal';
+import MessageModal from './message-modal';
+import { DetailSkeleton } from '@/components/skeleton';
 
 type Enrollment = {
   courseId: string;
@@ -69,7 +72,7 @@ type StudentData = {
     id: string; name: string; email: string; role: string; plan: string;
     level: number; xp: number; streak: number; phone: string | null;
     location: string | null; cpfCnpj: string | null; asaasCustomerId: string | null;
-    suspended: boolean; createdAt: string;
+    suspended: boolean; termsAcceptedAt: string | null; createdAt: string;
   };
   stats: {
     coursesEnrolled: number;
@@ -138,6 +141,8 @@ export default function StudentDetailPage() {
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [showCharge, setShowCharge] = useState(false);
   const [showSub, setShowSub] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const [addCourseSearch, setAddCourseSearch] = useState('');
 
   const refresh = useCallback(async () => {
@@ -200,7 +205,7 @@ export default function StudentDetailPage() {
     refresh();
   }
 
-  if (!data) return <div style={{ padding: 40 }}><p className="muted">Carregando…</p></div>;
+  if (!data) return <DetailSkeleton />;
 
   const { user, stats, cohorts, enrollments, availableCourses, payments, subscriptions } = data;
   const suspended = user.suspended;
@@ -215,15 +220,18 @@ export default function StudentDetailPage() {
           <Icon name="arrow-left" size={14} /> Voltar para alunos
         </button>
         <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
-          <a className="btn btn-ghost" href={`mailto:${user.email}`}>
+          <button className="btn btn-ghost" onClick={() => setShowMessage(true)}>
             <Icon name="chat" size={13} /> Enviar mensagem
-          </a>
+          </button>
           <button
             className="btn btn-ghost"
             style={{ color: suspended ? '#22c55e' : '#f97316' }}
             onClick={handleToggleSuspended}
           >
             {suspended ? 'Reativar acesso' : 'Suspender acesso'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setShowPassword(true)}>
+            Redefinir senha
           </button>
           <button className="btn btn-ghost" style={{ color: 'var(--danger)' }} onClick={handleDelete}>
             <Icon name="trash" size={13} /> Excluir aluno
@@ -283,6 +291,16 @@ export default function StudentDetailPage() {
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor }} />
                 <p style={{ fontSize: 18, fontWeight: 600 }}>{status}</p>
               </div>
+            </div>
+            <div>
+              <p className="muted" style={{ fontSize: 11, marginBottom: 4 }}>LGPD</p>
+              <div className="row gap-6" style={{ alignItems: 'center' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.termsAcceptedAt ? '#22c55e' : '#f97316' }} />
+                <p style={{ fontSize: 18, fontWeight: 600 }}>{user.termsAcceptedAt ? 'Aceito' : 'Pendente'}</p>
+              </div>
+              {user.termsAcceptedAt && (
+                <p className="muted" style={{ fontSize: 11, marginTop: 2 }}>em {fmtDate(user.termsAcceptedAt)}</p>
+              )}
             </div>
           </div>
         </div>
@@ -366,6 +384,24 @@ export default function StudentDetailPage() {
           onClose={() => setShowSub(false)}
           onSubmitted={() => { setShowSub(false); refresh(); }}
           onCreate={(args) => adminCreateAsaasSubscription(user.id, args)}
+        />
+      )}
+
+      {showPassword && (
+        <PasswordModal
+          userId={user.id}
+          userName={user.name}
+          onClose={() => setShowPassword(false)}
+        />
+      )}
+
+      {showMessage && (
+        <MessageModal
+          userId={user.id}
+          userName={user.name}
+          userEmail={user.email}
+          userPhone={user.phone}
+          onClose={() => setShowMessage(false)}
         />
       )}
     </div>

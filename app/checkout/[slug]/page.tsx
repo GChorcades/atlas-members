@@ -1,37 +1,29 @@
 import { db } from '@/db';
-import { checkouts, courses } from '@/db/schema';
+import { checkouts, checkoutOffers, courses } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import CheckoutScreen from './checkout-form';
+import SocialProofToaster from './social-proof-toaster';
 
 export default async function CheckoutPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [row] = await db
-    .select({
-      id: checkouts.id,
-      slug: checkouts.slug,
-      active: checkouts.active,
-      price: checkouts.price,
-      headline: checkouts.headline,
-      description: checkouts.description,
-      allowPix: checkouts.allowPix,
-      allowBoleto: checkouts.allowBoleto,
-      allowCreditCard: checkouts.allowCreditCard,
-      maxInstallments: checkouts.maxInstallments,
-      courseId: courses.id,
-      courseTitle: courses.title,
-      courseSubtitle: courses.subtitle,
-      instructor: courses.instructor,
-      coverBg: courses.coverBg,
-      coverImage: courses.coverImage,
-      coverGlyph: courses.coverGlyph,
-    })
-    .from(checkouts)
-    .innerJoin(courses, eq(courses.id, checkouts.courseId))
-    .where(eq(checkouts.slug, slug))
-    .limit(1);
 
-  if (!row || !row.active) notFound();
+  // O slug pode ser de um checkout ou de uma oferta (preço alternativo).
+  const [offer] = await db.select().from(checkoutOffers).where(eq(checkoutOffers.slug, slug)).limit(1);
+
+  const checkoutId = offer ? offer.checkoutId : null;
+  const [co] = checkoutId
+    ? await db.select().from(checkouts).where(eq(checkouts.id, checkoutId)).limit(1)
+    : await db.select().from(checkouts).where(eq(checkouts.slug, slug)).limit(1);
+
+  if (!co || !co.active) notFound();
+  if (offer && !offer.active) notFound();
+
+  const [course] = await db.select().from(courses).where(eq(courses.id, co.courseId)).limit(1);
+  if (!course) notFound();
+
+  const effectivePrice = offer ? offer.price : co.price;
+  const headline = offer ? offer.name : (co.headline ?? course.title);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '32px 16px 48px' }}>
@@ -40,9 +32,9 @@ export default async function CheckoutPage({ params }: { params: Promise<{ slug:
           className="card"
           style={{
             padding: 24,
-            background: row.coverImage
-              ? `url(${row.coverImage}) center/cover, ${row.coverBg ?? 'linear-gradient(135deg, #1a1a2e, #16213e)'}`
-              : (row.coverBg ?? 'linear-gradient(135deg, #1a1a2e, #16213e)'),
+            background: course.coverImage
+              ? `url(${course.coverImage}) center/cover, ${course.coverBg ?? 'linear-gradient(135deg, #1a1a2e, #16213e)'}`
+              : (course.coverBg ?? 'linear-gradient(135deg, #1a1a2e, #16213e)'),
             color: 'white',
             display: 'flex',
             alignItems: 'center',
@@ -51,32 +43,34 @@ export default async function CheckoutPage({ params }: { params: Promise<{ slug:
             position: 'relative',
           }}
         >
-          {row.coverImage && (
+          {course.coverImage && (
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(0,0,0,0.55), rgba(0,0,0,0.15))' }} />
           )}
-          {row.coverGlyph && !row.coverImage && <div style={{ fontSize: 44 }}>{row.coverGlyph}</div>}
+          {course.coverGlyph && !course.coverImage && <div style={{ fontSize: 44 }}>{course.coverGlyph}</div>}
           <div style={{ position: 'relative' }}>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, margin: 0, fontWeight: 400, letterSpacing: '-0.02em' }}>
-              {row.headline ?? row.courseTitle}
+              {headline}
             </h1>
-            {row.courseSubtitle && <p style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>{row.courseSubtitle}</p>}
-            <p style={{ opacity: 0.7, marginTop: 6, fontSize: 12 }}>com {row.instructor}</p>
+            {course.subtitle && <p style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>{course.subtitle}</p>}
+            <p style={{ opacity: 0.7, marginTop: 6, fontSize: 12 }}>com {course.instructor}</p>
           </div>
         </div>
       </div>
 
       <CheckoutScreen
         slug={slug}
-        price={row.price}
-        courseTitle={row.courseTitle}
-        coverGlyph={row.coverGlyph}
-        coverBg={row.coverBg}
-        coverImage={row.coverImage}
-        allowPix={row.allowPix}
-        allowBoleto={row.allowBoleto}
-        allowCreditCard={row.allowCreditCard}
-        maxInstallments={row.maxInstallments}
+        price={effectivePrice}
+        courseTitle={course.title}
+        coverGlyph={course.coverGlyph}
+        coverBg={course.coverBg}
+        coverImage={course.coverImage}
+        allowPix={co.allowPix}
+        allowBoleto={co.allowBoleto}
+        allowCreditCard={co.allowCreditCard}
+        maxInstallments={co.maxInstallments}
       />
+
+      {co.socialProof && <SocialProofToaster courseTitle={course.title} />}
     </div>
   );
 }

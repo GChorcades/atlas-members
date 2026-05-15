@@ -2,12 +2,14 @@
 
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { enrollments, lessonProgress, lessons, modules, notes, comments, courses, users, settings, cohorts, cohortCourses, cohortMembers, payments, subscriptions, checkouts } from '@/db/schema';
+import { enrollments, lessonProgress, lessons, modules, notes, comments, courses, users, settings, cohorts, cohortCourses, cohortMembers, payments, subscriptions, checkouts, checkoutOffers, coupons } from '@/db/schema';
 import bcrypt from 'bcryptjs';
 import { asaasCreateCustomer, asaasUpdateCustomer, asaasCreatePayment, asaasDeletePayment, asaasGetPaymentPixQrCode, asaasCreateSubscription, asaasCancelSubscription, asaasListPaymentsByInstallment, mapAsaasStatusToOurs, type AsaasBillingType } from '@/lib/asaas';
 import { eq, and, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/lib/brevo';
+import { sendWhatsApp } from '@/lib/zapi';
 
 async function getSession() {
   const session = await auth();
@@ -205,6 +207,15 @@ export async function adminModerateComment(id: string, status: 'approved' | 'rej
   revalidatePath('/admin/comments');
 }
 
+export async function adminDeleteComment(id: string) {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  // Remove respostas vinculadas antes do comentário pai (parentId não tem FK).
+  await db.delete(comments).where(eq(comments.parentId, id));
+  await db.delete(comments).where(eq(comments.id, id));
+  revalidatePath('/admin/comments');
+}
+
 export async function adminToggleCoursePublished(id: string, published: boolean) {
   const session = await getSession();
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
@@ -221,6 +232,7 @@ export async function adminUpdateLesson(lessonId: string, data: {
   transcript?: string;
   aiSummary?: string;
   content?: string;
+  chapters?: string;
   published?: boolean;
   allowComments?: boolean;
 }) {
@@ -745,6 +757,7 @@ export async function adminUpsertCheckout(data: {
   allowBoleto: boolean;
   allowCreditCard: boolean;
   maxInstallments: number;
+  socialProof: boolean;
 }) {
   const session = await getSession();
   if (session.user.role !== 'admin') throw new Error('Acesso negado');
@@ -777,6 +790,7 @@ export async function adminUpsertCheckout(data: {
       allowBoleto: data.allowBoleto,
       allowCreditCard: data.allowCreditCard,
       maxInstallments: data.maxInstallments,
+      socialProof: data.socialProof,
       updatedAt: new Date(),
     }).where(eq(checkouts.id, data.id));
   } else {
@@ -792,6 +806,7 @@ export async function adminUpsertCheckout(data: {
       allowBoleto: data.allowBoleto,
       allowCreditCard: data.allowCreditCard,
       maxInstallments: data.maxInstallments,
+      socialProof: data.socialProof,
     });
   }
 
@@ -813,6 +828,168 @@ export async function adminToggleCheckoutActive(id: string, active: boolean) {
   revalidatePath('/admin/checkouts');
 }
 
+// ─── Admin: enviar mensagem a um aluno ───────────────────────────────
+
+export async function adminSendMessage(data: {
+  userId: string;
+  channel: 'email' | 'whatsapp';
+  subject?: string;
+  body: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+
+  if (!data.body.trim()) return { ok: false, error: 'A mensagem está vazia.' };
+
+  const [user] = await db
+    .select({ name: users.name, email: users.email, phone: users.phone })
+    .from(users)
+    .where(eq(users.id, data.userId))
+    .limit(1);
+  if (!user) return { ok: false, error: 'Aluno não encontrado.' };
+
+  if (data.channel === 'email') {
+    const subject = data.subject?.trim() || 'Mensagem da plataforma';
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">
+      ${data.body.split('\n').map((l) => `<p style="margin:0 0 10px;">${l.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] ?? c))}</p>`).join('')}
+    </div>`;
+    const res = await sendEmail({ to: { email: user.email, name: user.name }, subject, htmlContent: html });
+    return res.ok ? { ok: true } : { ok: false, error: res.error ?? 'Falha ao enviar email.' };
+  }
+
+  // WhatsApp
+  if (!user.phone) return { ok: false, error: 'Este aluno não tem telefone cadastrado.' };
+  const res = await sendWhatsApp(user.phone, data.body);
+  return res.ok ? { ok: true } : { ok: false, error: res.error ?? 'Falha ao enviar WhatsApp.' };
+}
+
+// ─── Checkout offers (CRUD) ──────────────────────────────────────────
+
+export async function adminUpsertOffer(data: {
+  id?: string;
+  checkoutId: string;
+  name: string;
+  slug?: string;
+  price: number;
+  active: boolean;
+}) {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  if (!data.name.trim()) throw new Error('Nome da oferta obrigatório.');
+  if (!data.price || data.price <= 0) throw new Error('Preço inválido.');
+
+  let slug = data.slug?.trim() || slugify(data.name);
+  if (!slug) slug = `o-${nanoid(6)}`;
+
+  // Garante slug único (entre ofertas e checkouts)
+  const collides = async (s: string) => {
+    const o = await db.select({ id: checkoutOffers.id }).from(checkoutOffers).where(eq(checkoutOffers.slug, s)).limit(1);
+    if (o.length && o[0].id !== data.id) return true;
+    const c = await db.select({ id: checkouts.id }).from(checkouts).where(eq(checkouts.slug, s)).limit(1);
+    return c.length > 0;
+  };
+  let candidate = slug;
+  let n = 1;
+  while (await collides(candidate)) candidate = `${slug}-${n++}`;
+  slug = candidate;
+
+  if (data.id) {
+    await db.update(checkoutOffers).set({
+      name: data.name.trim(), slug, price: data.price, active: data.active, updatedAt: new Date(),
+    }).where(eq(checkoutOffers.id, data.id));
+  } else {
+    await db.insert(checkoutOffers).values({
+      id: nanoid(), checkoutId: data.checkoutId, name: data.name.trim(), slug, price: data.price, active: data.active,
+    });
+  }
+  revalidatePath('/admin/checkouts');
+  return { slug };
+}
+
+export async function adminDeleteOffer(id: string) {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  await db.delete(checkoutOffers).where(eq(checkoutOffers.id, id));
+  revalidatePath('/admin/checkouts');
+}
+
+// ─── Coupons (CRUD) ──────────────────────────────────────────────────
+
+export async function adminCreateCoupon(data: {
+  checkoutId: string;
+  code: string;
+  discountType: 'percent' | 'fixed';
+  discountValue: number;
+  validDays: number;
+}) {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  const code = data.code.trim().toUpperCase();
+  if (!code) throw new Error('Código do cupom obrigatório.');
+  if (!data.discountValue || data.discountValue <= 0) throw new Error('Valor de desconto inválido.');
+  if (data.discountType === 'percent' && data.discountValue > 100) throw new Error('Porcentagem não pode passar de 100%.');
+  if (!data.validDays || data.validDays <= 0) throw new Error('Validade em dias inválida.');
+
+  const existing = await db.select({ id: coupons.id }).from(coupons)
+    .where(and(eq(coupons.checkoutId, data.checkoutId), eq(coupons.code, code))).limit(1);
+  if (existing.length) throw new Error('Já existe um cupom com esse código neste checkout.');
+
+  const expiresAt = new Date(Date.now() + data.validDays * 24 * 60 * 60 * 1000);
+  await db.insert(coupons).values({
+    id: nanoid(), checkoutId: data.checkoutId, code,
+    discountType: data.discountType, discountValue: data.discountValue, expiresAt, active: true,
+  });
+  revalidatePath('/admin/checkouts');
+}
+
+export async function adminDeleteCoupon(id: string) {
+  const session = await getSession();
+  if (session.user.role !== 'admin') throw new Error('Acesso negado');
+  await db.delete(coupons).where(eq(coupons.id, id));
+  revalidatePath('/admin/checkouts');
+}
+
+// ─── Checkout resolution + coupon helpers ────────────────────────────
+
+function applyDiscount(price: number, type: 'percent' | 'fixed', value: number): number {
+  const result = type === 'percent' ? price * (1 - value / 100) : price - value;
+  return Math.max(0, Math.round(result * 100) / 100);
+}
+
+/** Resolve um slug que pode ser de checkout ou de oferta. */
+async function resolveCheckoutSlug(slug: string) {
+  const [offer] = await db.select().from(checkoutOffers).where(eq(checkoutOffers.slug, slug)).limit(1);
+  if (offer) {
+    if (!offer.active) throw new Error('Oferta indisponível.');
+    const [co] = await db.select().from(checkouts).where(eq(checkouts.id, offer.checkoutId)).limit(1);
+    if (!co) throw new Error('Checkout indisponível.');
+    return { checkout: co, price: offer.price, offerName: offer.name };
+  }
+  const [co] = await db.select().from(checkouts).where(eq(checkouts.slug, slug)).limit(1);
+  if (!co) throw new Error('Checkout indisponível.');
+  return { checkout: co, price: co.price, offerName: null as string | null };
+}
+
+/** Validação pública de cupom — usada pelo formulário de checkout. */
+export async function validatePublicCoupon(slug: string, rawCode: string): Promise<
+  { ok: true; discountType: 'percent' | 'fixed'; discountValue: number; finalPrice: number; basePrice: number }
+  | { ok: false; error: string }
+> {
+  const code = rawCode.trim().toUpperCase();
+  if (!code) return { ok: false, error: 'Informe um código.' };
+  try {
+    const { checkout, price } = await resolveCheckoutSlug(slug);
+    const [coupon] = await db.select().from(coupons)
+      .where(and(eq(coupons.checkoutId, checkout.id), eq(coupons.code, code))).limit(1);
+    if (!coupon || !coupon.active) return { ok: false, error: 'Cupom inválido.' };
+    if (new Date(coupon.expiresAt).getTime() < Date.now()) return { ok: false, error: 'Cupom expirado.' };
+    const finalPrice = applyDiscount(price, coupon.discountType, coupon.discountValue);
+    return { ok: true, discountType: coupon.discountType, discountValue: coupon.discountValue, finalPrice, basePrice: price };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Erro ao validar cupom.' };
+  }
+}
+
 // ─── Public checkout: create charge + user (no auth) ─────────────────
 
 export async function createPublicCheckoutCharge(slug: string, data: {
@@ -823,6 +1000,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
   postalCode: string;
   billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
   installmentCount?: number;
+  couponCode?: string;
   creditCard?: {
     holderName: string;
     number: string;
@@ -831,11 +1009,24 @@ export async function createPublicCheckoutCharge(slug: string, data: {
     ccv: string;
   };
 }): Promise<{ ok: true; paymentId: string }> {
-  const [co] = await db.select().from(checkouts).where(eq(checkouts.slug, slug)).limit(1);
-  if (!co || !co.active) throw new Error('Checkout indisponível.');
+  const resolved = await resolveCheckoutSlug(slug);
+  const co = resolved.checkout;
+  if (!co.active) throw new Error('Checkout indisponível.');
+
+  // Preço efetivo = preço da oferta (ou do checkout), com cupom aplicado e re-validado no servidor.
+  let effectivePrice = resolved.price;
+  if (data.couponCode?.trim()) {
+    const code = data.couponCode.trim().toUpperCase();
+    const [coupon] = await db.select().from(coupons)
+      .where(and(eq(coupons.checkoutId, co.id), eq(coupons.code, code))).limit(1);
+    if (!coupon || !coupon.active) throw new Error('Cupom inválido.');
+    if (new Date(coupon.expiresAt).getTime() < Date.now()) throw new Error('Cupom expirado.');
+    effectivePrice = applyDiscount(effectivePrice, coupon.discountType, coupon.discountValue);
+  }
+  if (effectivePrice <= 0) throw new Error('Preço final inválido.');
 
   const [course] = await db.select({ title: courses.title }).from(courses).where(eq(courses.id, co.courseId)).limit(1);
-  const productDescription = co.headline?.trim() || (course ? `Acesso ao curso: ${course.title}` : 'Acesso ao curso');
+  const productDescription = resolved.offerName?.trim() || co.headline?.trim() || (course ? `Acesso ao curso: ${course.title}` : 'Acesso ao curso');
 
   if (data.billingType === 'PIX' && !co.allowPix) throw new Error('PIX não permitido para este checkout.');
   if (data.billingType === 'BOLETO' && !co.allowBoleto) throw new Error('Boleto não permitido para este checkout.');
@@ -903,8 +1094,8 @@ export async function createPublicCheckoutCharge(slug: string, data: {
   const payment = await asaasCreatePayment({
     customer: asaasCustomerId,
     billingType: data.billingType,
-    value: useInstallments ? co.price / installments : co.price,
-    totalValue: useInstallments ? co.price : undefined,
+    value: useInstallments ? effectivePrice / installments : effectivePrice,
+    totalValue: useInstallments ? effectivePrice : undefined,
     installmentCount: useInstallments ? installments : undefined,
     dueDate,
     description: productDescription,

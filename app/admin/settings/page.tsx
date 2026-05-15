@@ -20,6 +20,14 @@ export default async function AdminSettingsPage() {
         cdnHostname: process.env.BUNNY_CDN_HOSTNAME ?? '',
         configured: bunnyConfigured,
       }}
+      messagingEnv={{
+        brevoApiKey: !!process.env.BREVO_API_KEY,
+        brevoSenderEmail: process.env.BREVO_SENDER_EMAIL ?? '',
+        brevoSenderName: process.env.BREVO_SENDER_NAME ?? '',
+        zapiInstanceId: !!process.env.ZAPI_INSTANCE_ID,
+        zapiToken: !!process.env.ZAPI_TOKEN,
+        zapiClientToken: !!process.env.ZAPI_CLIENT_TOKEN,
+      }}
     />
   );
 }

@@ -16,6 +16,7 @@ import {
   adminUpdateLessonTitle,
   adminDeleteLesson,
 } from '@/lib/actions';
+import { DetailSkeleton } from '@/components/skeleton';
 
 type Lesson = {
   id: string; title: string; type: string; duration: string | null;
@@ -33,6 +34,7 @@ type Course = {
   instructor: string; instructorRole: string | null; level: string;
   duration: string | null; coverBg: string | null; coverImage: string | null;
   coverGlyph: string | null; coverAccent: string | null;
+  students: number;
   published: boolean;
 };
 
@@ -92,6 +94,7 @@ export default function EditCoursePage() {
       instructorRole: (fd.get('instructorRole') as string) || null,
       level: fd.get('level') as string,
       duration: (fd.get('duration') as string) || null,
+      students: Math.max(0, parseInt(String(fd.get('students') ?? '0'), 10) || 0),
       coverBg: (fd.get('coverBg') as string) || null,
       coverImage: coverImageUrl || null,
       coverGlyph: (fd.get('coverGlyph') as string) || null,
@@ -156,7 +159,7 @@ export default function EditCoursePage() {
     await adminReorderLessons(moduleId, newOrder.map((l) => l.id));
   }
 
-  if (!data) return <div style={{ padding: 40 }}><p className="muted">Carregando…</p></div>;
+  if (!data) return <DetailSkeleton />;
 
   const { course, modules } = data;
   const coverBgVal = course.coverBg ?? '';
@@ -281,6 +284,12 @@ export default function EditCoursePage() {
                 <div className="field-group">
                   <label className="field-label">Duração total</label>
                   <input name="duration" className="input-field" defaultValue={course.duration ?? ''} placeholder="ex: 14h 12min" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="field-group">
+                  <label className="field-label">Quantidade de alunos (exibida)</label>
+                  <input name="students" type="number" min={0} className="input-field" defaultValue={course.students} placeholder="ex: 1240" />
                 </div>
               </div>
             </div>

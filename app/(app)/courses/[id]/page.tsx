@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
 import { enrollInCourse } from '@/lib/actions';
+import { Skel, SkelText } from '@/components/skeleton';
 
 type Lesson = {
   id: string;
@@ -66,7 +67,25 @@ export default function CoursePage() {
       });
   }, [params.id]);
 
-  if (loading) return <div className="content fade-up"><p className="muted">Carregando…</p></div>;
+  if (loading) {
+    return (
+      <div className="content content-wide" style={{ maxWidth: 1100, padding: '24px 32px' }}>
+        <Skel h={220} radius={14} style={{ marginBottom: 24 }} />
+        <div className="course-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Skel h={22} w={200} style={{ marginBottom: 4 }} />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skel key={i} h={56} />
+            ))}
+          </div>
+          <div className="card" style={{ padding: 20 }}>
+            <SkelText lines={4} />
+            <Skel h={44} radius={10} style={{ marginTop: 16 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!course) return <div className="content"><p className="muted">Curso não encontrado.</p></div>;
 
   const totalLessons = course.modules.reduce((a, m) => a + m.lessons.length, 0) || course.lessonCount;
@@ -108,7 +127,7 @@ export default function CoursePage() {
             <p style={{ marginTop: 16, marginBottom: 0, fontSize: 16, lineHeight: 1.5, opacity: 0.85, maxWidth: 560 }}>{course.description}</p>
             <div className="row gap-16" style={{ marginTop: 28 }}>
               <div className="row gap-12">
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'grid', placeItems: 'center', fontWeight: 500, fontSize: 14 }}>
+                <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'grid', placeItems: 'center', fontWeight: 500, fontSize: 14 }}>
                   {course.instructor.split(' ').map((p) => p[0]).slice(0, 2).join('')}
                 </div>
                 <div>
@@ -120,7 +139,7 @@ export default function CoursePage() {
               <div className="row gap-8" style={{ fontSize: 13 }}>
                 <Icon name="star" size={14} style={{ color: '#fcd34d' }} />
                 <span style={{ fontWeight: 500 }}>{course.rating}</span>
-                <span style={{ opacity: 0.6 }}>({course.students.toLocaleString('pt-BR')} alunos)</span>
+                <span className="course-students-count" style={{ opacity: 0.6 }}>({course.students.toLocaleString('pt-BR')} alunos)</span>
               </div>
             </div>
           </div>

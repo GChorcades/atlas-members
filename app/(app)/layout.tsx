@@ -11,18 +11,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect('/login');
 
   const [dbUser] = await db
-    .select({ name: users.name, email: users.email, role: users.role, level: users.level, xp: users.xp, suspended: users.suspended })
+    .select({ name: users.name, email: users.email, role: users.role, level: users.level, xp: users.xp, suspended: users.suspended, termsAcceptedAt: users.termsAcceptedAt })
     .from(users)
     .where(eq(users.id, session.user.id))
     .limit(1);
 
   if (!dbUser) redirect('/login');
   if (dbUser.suspended) redirect('/login');
+  if (!dbUser.termsAcceptedAt) redirect('/terms');
 
   const brand = await getBrand();
 
   return (
-    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, footer: brand.footer }}>
+    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
       {children}
     </AppShell>
   );

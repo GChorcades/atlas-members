@@ -13,17 +13,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (session.user.role !== 'admin') redirect('/dashboard');
 
   const [dbUser] = await db
-    .select({ name: users.name, email: users.email, role: users.role, level: users.level, xp: users.xp })
+    .select({ name: users.name, email: users.email, role: users.role, level: users.level, xp: users.xp, termsAcceptedAt: users.termsAcceptedAt })
     .from(users)
     .where(eq(users.id, session.user.id))
     .limit(1);
 
   if (!dbUser) redirect('/login');
+  if (!dbUser.termsAcceptedAt) redirect('/terms');
 
   const brand = await getBrand();
 
   return (
-    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, footer: brand.footer }}>
+    <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
       <div className="content content-wide" style={{ maxWidth: 1440 }}>
         <div className="eyebrow">Painel</div>
         <h1 className="h1-serif mt-8 mb-24">Admin</h1>

@@ -8,9 +8,10 @@ import { ThemeToggle } from './theme-toggle';
 
 type Props = {
   user: { name: string; email: string; role: string };
+  onMobileMenu?: () => void;
 };
 
-export function Topbar({ user }: Props) {
+export function Topbar({ user, onMobileMenu }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const initials = user.name.split(' ').map((p) => p[0]).slice(0, 2).join('');
@@ -27,6 +28,16 @@ export function Topbar({ user }: Props) {
 
   return (
     <header className="topbar">
+      {onMobileMenu && (
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={onMobileMenu}
+          aria-label="Abrir menu"
+        >
+          <Icon name="menu" size={20} />
+        </button>
+      )}
       <div className="topbar-search">
         <Icon name="search" size={16} />
         <input placeholder="Buscar cursos, aulas, materiais…" />

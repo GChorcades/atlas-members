@@ -80,7 +80,7 @@ export default async function DashboardPage() {
       )}
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: continueEnrollment ? 12 : 32 }}>
+      <div className="dashboard-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: continueEnrollment ? 12 : 32 }}>
         <StatCard icon="clock" value={`${user?.xp ?? 0}`} label="XP total" />
         <StatCard icon="check-circle" value={String(doneLesson)} label="aulas concluídas" />
         <StatCard icon="flame" value={String(user?.streak ?? 0)} label="dias seguidos" />
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
           <Link href="/catalog" className="btn btn-accent">Ver catálogo</Link>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+        <div className="dashboard-courses" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
           {userEnrollments.map(({ enrollment, course }) => (
             <CourseCard key={course.id} course={course} progress={enrollment.progress} stats={statsMap.get(course.id)} />
           ))}

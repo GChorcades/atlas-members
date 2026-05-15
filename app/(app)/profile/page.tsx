@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, userAchievements, achievements, enrollments } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { Icon } from '@/components/icons';
+import PasswordForm from './password-form';
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -99,6 +100,14 @@ export default async function ProfilePage() {
           </div>
         </div>
       )}
+
+      <div className="card" style={{ padding: 24, marginTop: 20 }}>
+        <h3 className="h2" style={{ letterSpacing: '-0.015em' }}>Alterar senha</h3>
+        <div className="muted mt-8" style={{ fontSize: 13 }}>
+          Por segurança, informe sua senha atual para definir uma nova.
+        </div>
+        <PasswordForm />
+      </div>
     </div>
   );
 }

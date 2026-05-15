@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { notifyWelcome } from '@/lib/notifications';
 
 export async function POST(req: Request) {
   const { name, email, password } = await req.json();
@@ -25,5 +26,12 @@ export async function POST(req: Request) {
   }
   const hash = await bcrypt.hash(password, 12);
   await db.insert(users).values({ id: nanoid(), name, email, passwordHash: hash });
+
+  try {
+    await notifyWelcome({ name, email });
+  } catch (err) {
+    console.error('[register] notify falhou', err);
+  }
+
   return NextResponse.json({ ok: true });
 }

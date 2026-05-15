@@ -9,9 +9,10 @@ export type Brand = {
   faviconUrl: string | null;
   color: string | null;
   footer: string | null;
+  logoOnly: boolean;
 };
 
-const KEYS = ['brand_name', 'brand_logo', 'brand_favicon', 'brand_color', 'brand_footer'] as const;
+const KEYS = ['brand_name', 'brand_logo', 'brand_favicon', 'brand_color', 'brand_footer', 'brand_logo_only'] as const;
 
 export const getBrand = cache(async (): Promise<Brand> => {
   const rows = await db.select().from(settings).where(inArray(settings.key, [...KEYS]));
@@ -22,5 +23,6 @@ export const getBrand = cache(async (): Promise<Brand> => {
     faviconUrl: map['brand_favicon']?.trim() || null,
     color: map['brand_color']?.trim() || null,
     footer: map['brand_footer']?.trim() || null,
+    logoOnly: map['brand_logo_only'] === '1',
   };
 });

@@ -7,12 +7,15 @@ import { Icon } from '@/components/icons';
 import { adminUpdateLesson } from '@/lib/actions';
 import { BunnyVideoPicker } from '@/components/bunny-video-picker';
 import { PandaVideoPicker } from '@/components/panda-video-picker';
+import { MarkdownEditor } from '@/components/markdown-editor';
+import { DetailSkeleton } from '@/components/skeleton';
+import { WorkingIndicator } from '@/components/working-indicator';
 
 type LessonDetail = {
   id: string; title: string; type: string; duration: string | null;
   bunnyVideoId: string | null; pandaVideoId: string | null;
   videoUrl: string | null;
-  transcript: string | null; aiSummary: string | null; content: string | null;
+  transcript: string | null; aiSummary: string | null; content: string | null; chapters: string | null;
   published: boolean; allowComments: boolean;
   module: { id: string; title: string; courseId: string };
   courseTitle: string;
@@ -52,13 +55,24 @@ export default function EditLessonPage() {
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [saving, setSaving] = useState<null | 'draft' | 'publish' | 'unpublish'>(null);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [generatingMaterial, setGeneratingMaterial] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribeError, setTranscribeError] = useState('');
+  const [generatingChapters, setGeneratingChapters] = useState(false);
+  const [chaptersError, setChaptersError] = useState('');
+  const [chaptersList, setChaptersList] = useState<{ time: number; title: string }[]>([]);
   const [summaryText, setSummaryText] = useState('');
   const [transcriptText, setTranscriptText] = useState('');
+  const [contentText, setContentText] = useState('');
+  const [aiHint, setAiHint] = useState('');
+  const [materialsList, setMaterialsList] = useState<Array<{ id: string; name: string; url: string; size: string | null; type: string }>>([]);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [materialError, setMaterialError] = useState('');
   const [bunnyId, setBunnyId] = useState('');
   const [pandaId, setPandaId] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [activePlayer, setActivePlayer] = useState<PlayerKey>('url');
-  const [tab, setTab] = useState<'info' | 'transcript' | 'summary'>('info');
+  const [tab, setTab] = useState<'info' | 'material' | 'transcript' | 'chapters' | 'summary'>('info');
   const [allowComments, setAllowComments] = useState(true);
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState('');
@@ -70,6 +84,15 @@ export default function EditLessonPage() {
         setLesson(d);
         setTranscriptText(d.transcript ?? '');
         setSummaryText(d.aiSummary ?? '');
+        setContentText(d.content ?? '');
+        try {
+          const parsed = d.chapters ? JSON.parse(d.chapters) : [];
+          setChaptersList(Array.isArray(parsed) ? parsed : []);
+        } catch { setChaptersList([]); }
+        fetch(`/api/admin/lessons/${d.id}/materials`)
+          .then((r) => r.json())
+          .then((m) => setMaterialsList(m.materials ?? []))
+          .catch(() => setMaterialsList([]));
         setBunnyId(d.bunnyVideoId ?? '');
         setPandaId(d.pandaVideoId ?? '');
         setVideoUrl(d.videoUrl ?? '');
@@ -110,6 +133,8 @@ export default function EditLessonPage() {
         videoUrl: videoUrl,
         transcript: transcriptText,
         aiSummary: summaryText,
+        content: contentText,
+        chapters: JSON.stringify(chaptersList),
       });
       if (publishedOverride !== undefined) {
         setLesson({ ...lesson, published: publishedOverride });
@@ -150,7 +175,109 @@ export default function EditLessonPage() {
     setGeneratingSummary(false);
   }
 
-  if (!lesson) return <div style={{ padding: 40 }}><p className="muted">Carregando…</p></div>;
+  async function handleTranscribe() {
+    if (!lesson) return;
+    setTranscribing(true);
+    setTranscribeError('');
+    try {
+      const res = await fetch(`/api/admin/lessons/${lesson.id}/transcribe`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setTranscribeError(data.error ?? 'Falha na transcrição.');
+      } else {
+        setTranscriptText(data.transcript ?? '');
+      }
+    } catch {
+      setTranscribeError('Erro de rede ao transcrever.');
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function handleGenerateChapters() {
+    if (!lesson) return;
+    setGeneratingChapters(true);
+    setChaptersError('');
+    try {
+      const res = await fetch('/api/ai/chapters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: lesson.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) setChaptersError(data.error ?? 'Falha ao gerar capítulos.');
+      else setChaptersList(data.chapters ?? []);
+    } catch {
+      setChaptersError('Erro de rede.');
+    } finally {
+      setGeneratingChapters(false);
+    }
+  }
+
+  function fmtChapterTime(total: number): string {
+    const s = Math.max(0, Math.round(total));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+      : `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function parseChapterTime(v: string): number {
+    const parts = v.split(':').map((p) => parseInt(p, 10) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] ?? 0;
+  }
+
+  async function handleGenerateMaterial() {
+    if (!lesson) return;
+    setGeneratingMaterial(true);
+    try {
+      const res = await fetch('/api/ai/material', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: lesson.id, hint: aiHint }),
+      });
+      const data = await res.json();
+      if (data.content) {
+        setContentText((prev) => (prev ? `${prev}\n\n${data.content}` : data.content));
+      }
+    } finally {
+      setGeneratingMaterial(false);
+    }
+  }
+
+  async function handleUploadMaterial(file: File) {
+    if (!lesson) return;
+    setMaterialError('');
+    setUploadingMaterial(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/admin/lessons/${lesson.id}/materials`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setMaterialError(data.error ?? 'Falha no upload');
+      } else if (data.material) {
+        setMaterialsList((m) => [...m, data.material]);
+      }
+    } catch {
+      setMaterialError('Erro de rede');
+    } finally {
+      setUploadingMaterial(false);
+    }
+  }
+
+  async function handleDeleteMaterial(id: string) {
+    if (!lesson) return;
+    if (!confirm('Remover este material?')) return;
+    const res = await fetch(`/api/admin/lessons/${lesson.id}/materials?id=${id}`, { method: 'DELETE' });
+    if (res.ok) setMaterialsList((m) => m.filter((x) => x.id !== id));
+  }
+
+  if (!lesson) return <DetailSkeleton />;
 
   const libraryId = process.env.NEXT_PUBLIC_BUNNY_LIBRARY_ID;
   const bunnyEmbedUrl = bunnyId && libraryId
@@ -184,7 +311,9 @@ export default function EditLessonPage() {
       <div className="tabs" style={{ marginBottom: 24 }}>
         {([
           { id: 'info', label: 'Informações' },
+          { id: 'material', label: 'Material' },
           { id: 'transcript', label: 'Transcrição' },
+          { id: 'chapters', label: 'Capítulos' },
           { id: 'summary', label: 'Resumo IA' },
         ] as const).map((t) => (
           <button key={t.id} className="tab" data-active={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -302,15 +431,169 @@ export default function EditLessonPage() {
           </>
         )}
 
+        {tab === 'material' && (
+          <>
+            <div className="card" style={{ padding: 24 }}>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>Material didático</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    Texto complementar com formatação (negrito, itálico, código, listas). Exibido para os alunos.
+                  </div>
+                </div>
+                <div className="row gap-8" style={{ alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={aiHint}
+                    onChange={(e) => setAiHint(e.target.value)}
+                    placeholder="Direção opcional para a IA (ex: foque em casos práticos)"
+                    className="input-field"
+                    style={{ width: 280, fontSize: 12.5 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-accent btn-sm"
+                    onClick={handleGenerateMaterial}
+                    disabled={generatingMaterial}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <Icon name="spark" size={13} /> {generatingMaterial ? 'Gerando…' : 'Gerar com IA'}
+                  </button>
+                </div>
+              </div>
+              {generatingMaterial && (
+                <WorkingIndicator
+                  steps={[
+                    'Lendo a transcrição da aula…',
+                    'Estruturando o material didático…',
+                    'Escrevendo o conteúdo com IA…',
+                    'Quase lá, finalizando…',
+                  ]}
+                />
+              )}
+              <MarkdownEditor
+                value={contentText}
+                onChange={setContentText}
+                placeholder="Escreva o material didático aqui. Use **negrito**, *itálico*, `código` e blocos ``` para destaque."
+                minHeight={360}
+              />
+            </div>
+
+            <div className="card" style={{ padding: 24 }}>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>Arquivos anexos</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    PDF, ZIP, DOC, XLS, imagem ou TXT — até 25 MB cada. Disponíveis para download na página da aula.
+                  </div>
+                </div>
+                <label className="btn btn-soft btn-sm" style={{ cursor: 'pointer' }}>
+                  <Icon name="plus" size={13} /> {uploadingMaterial ? 'Enviando…' : 'Adicionar arquivo'}
+                  <input
+                    type="file"
+                    style={{ display: 'none' }}
+                    accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.txt,image/*"
+                    disabled={uploadingMaterial}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUploadMaterial(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+
+              {materialError && (
+                <div style={{ padding: '10px 14px', borderRadius: 9, background: '#fee2e2', border: '1px solid #ef4444', fontSize: 12.5, color: '#991b1b', marginBottom: 12 }}>
+                  {materialError}
+                </div>
+              )}
+
+              {materialsList.length === 0 ? (
+                <div className="muted" style={{ fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
+                  Nenhum material anexado ainda.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {materialsList.map((m) => (
+                    <div
+                      key={m.id}
+                      className="row"
+                      style={{
+                        padding: '10px 14px',
+                        background: 'var(--bg-muted)',
+                        borderRadius: 8,
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <div className="row gap-12" style={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--accent-soft)', color: 'var(--accent-soft-fg)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>
+                          {m.type}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <a href={m.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {m.name}
+                          </a>
+                          <div className="mono muted" style={{ fontSize: 11 }}>{m.size}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => handleDeleteMaterial(m.id)}
+                        title="Remover"
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {tab === 'transcript' && (
           <div className="card" style={{ padding: 24 }}>
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>Transcrição da aula</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Cole ou escreva a transcrição completa. Será exibida na aba "Transcrição" da aula.</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Cole, escreva ou gere automaticamente a partir do vídeo BunnyNet.</div>
               </div>
-              <span className="muted mono" style={{ fontSize: 11 }}>{transcriptText.length} chars</span>
+              <div className="row gap-8" style={{ alignItems: 'center' }}>
+                {bunnyId && lesson.bunnyConfigured && (
+                  <button
+                    type="button"
+                    className="btn btn-accent btn-sm"
+                    onClick={handleTranscribe}
+                    disabled={transcribing}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <Icon name="spark" size={13} /> {transcribing ? 'Transcrevendo…' : 'Transcrever vídeo (IA)'}
+                  </button>
+                )}
+                <span className="muted mono" style={{ fontSize: 11 }}>{transcriptText.length} chars</span>
+              </div>
             </div>
+            {transcribing && (
+              <WorkingIndicator
+                steps={[
+                  'Localizando o vídeo na BunnyNet…',
+                  'Extraindo o áudio do vídeo…',
+                  'Enviando o áudio para a IA…',
+                  'Transcrevendo — isso pode levar alguns minutos…',
+                  'Quase lá, finalizando a transcrição…',
+                ]}
+              />
+            )}
+            {transcribeError && (
+              <div style={{ padding: '10px 14px', borderRadius: 9, background: '#fee2e2', border: '1px solid #ef4444', fontSize: 12.5, color: '#991b1b', marginBottom: 10 }}>
+                {transcribeError}
+              </div>
+            )}
             <textarea
               value={transcriptText}
               onChange={(e) => setTranscriptText(e.target.value)}
@@ -318,6 +601,92 @@ export default function EditLessonPage() {
               className="input-field"
               style={{ minHeight: 420, resize: 'vertical', fontFamily: 'var(--font-sans)', fontSize: 14, lineHeight: 1.65 }}
             />
+          </div>
+        )}
+
+        {tab === 'chapters' && (
+          <div className="card" style={{ padding: 24 }}>
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>Capítulos do vídeo</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  Pontos navegáveis do vídeo (só funcionam em aulas com vídeo BunnyNet). Gere com IA a partir da transcrição.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-accent btn-sm"
+                onClick={handleGenerateChapters}
+                disabled={generatingChapters}
+                style={{ flexShrink: 0 }}
+              >
+                <Icon name="spark" size={13} /> {generatingChapters ? 'Gerando…' : 'Gerar com IA'}
+              </button>
+            </div>
+
+            {generatingChapters && (
+              <WorkingIndicator
+                steps={[
+                  'Lendo a transcrição da aula…',
+                  'Identificando os tópicos da aula…',
+                  'Marcando os tempos dos capítulos…',
+                  'Quase lá, finalizando…',
+                ]}
+              />
+            )}
+            {chaptersError && (
+              <div style={{ padding: '10px 14px', borderRadius: 9, background: '#fee2e2', border: '1px solid #ef4444', fontSize: 12.5, color: '#991b1b', marginBottom: 12 }}>
+                {chaptersError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {chaptersList.map((c, i) => (
+                <div key={i} className="row gap-8" style={{ alignItems: 'center' }}>
+                  <input
+                    className="input-field"
+                    defaultValue={fmtChapterTime(c.time)}
+                    onBlur={(e) => {
+                      const secs = parseChapterTime(e.target.value);
+                      setChaptersList((list) => list.map((x, j) => (j === i ? { ...x, time: secs } : x)));
+                      e.target.value = fmtChapterTime(secs);
+                    }}
+                    style={{ width: 90, fontFamily: 'ui-monospace, monospace', fontSize: 13, flexShrink: 0 }}
+                    placeholder="MM:SS"
+                  />
+                  <input
+                    className="input-field"
+                    value={c.title}
+                    onChange={(e) => setChaptersList((list) => list.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
+                    style={{ flex: 1, fontSize: 13.5 }}
+                    placeholder="Título do capítulo"
+                  />
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => setChaptersList((list) => list.filter((_, j) => j !== i))}
+                    title="Remover"
+                    style={{ color: 'var(--danger)', flexShrink: 0 }}
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              ))}
+              {chaptersList.length === 0 && !generatingChapters && (
+                <p className="muted" style={{ fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
+                  Nenhum capítulo. Gere com IA ou adicione manualmente.
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-soft btn-sm"
+              onClick={() => setChaptersList((list) => [...list, { time: 0, title: '' }])}
+              style={{ marginTop: 12 }}
+            >
+              <Icon name="plus" size={13} /> Adicionar capítulo
+            </button>
           </div>
         )}
 
@@ -338,6 +707,16 @@ export default function EditLessonPage() {
                 <Icon name="spark" size={13} /> {generatingSummary ? 'Gerando…' : 'Gerar com IA'}
               </button>
             </div>
+            {generatingSummary && (
+              <WorkingIndicator
+                steps={[
+                  'Lendo a transcrição da aula…',
+                  'Identificando os pontos principais…',
+                  'Escrevendo o resumo com IA…',
+                  'Quase lá, finalizando…',
+                ]}
+              />
+            )}
             <textarea
               value={summaryText}
               onChange={(e) => setSummaryText(e.target.value)}
