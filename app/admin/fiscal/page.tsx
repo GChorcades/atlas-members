@@ -19,6 +19,7 @@ export default async function AdminFiscalPage() {
       pdfUrl: invoices.pdfUrl,
       errorMessage: invoices.errorMessage,
       createdAt: invoices.createdAt,
+      notifiedAt: invoices.notifiedAt,
       paymentId: invoices.paymentId,
       buyerName: users.name,
       buyerCpf: users.cpfCnpj,
@@ -32,6 +33,7 @@ export default async function AdminFiscalPage() {
   const serializedInvoices = tenantInvoices.map((inv) => ({
     ...inv,
     createdAt: inv.createdAt.toISOString(),
+    notifiedAt: inv.notifiedAt ? inv.notifiedAt.toISOString() : null,
   }));
 
   return (

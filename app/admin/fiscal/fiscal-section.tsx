@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
-import { saveFiscalConfig, retryInvoicePdf, cancelInvoiceManual } from '@/lib/fiscal-actions';
+import { saveFiscalConfig, retryInvoicePdf, cancelInvoiceManual, dispatchPendingInvoices } from '@/lib/fiscal-actions';
 import type { getFiscalConfigForUI } from '@/lib/fiscal-config';
 
 type FiscalConfigUI = Awaited<ReturnType<typeof getFiscalConfigForUI>>;
@@ -16,6 +17,7 @@ type InvoiceRow = {
   errorMessage: string | null;
   createdAt: string;
   paymentId: string | null;
+  notifiedAt: string | null;
   buyerName: string | null;
   buyerCpf: string | null;
 };
@@ -47,6 +49,7 @@ function SubHeading({ children }: { children: React.ReactNode }) {
 
 export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: FiscalConfigUI; invoices: InvoiceRow[] }) {
   const cfg = fiscalConfig;
+  const router = useRouter();
 
   // ── form state ──────────────────────────────────────────────────────────
   const [enabled, setEnabled] = useState(cfg?.enabled ?? false);
@@ -97,6 +100,10 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
   const [isPending, startTransition] = useTransition();
   const [savedOk, setSavedOk] = useState(false);
 
+  // ── dispatch state ───────────────────────────────────────────────────────
+  const [isDispatching, startDispatchTransition] = useTransition();
+  const [dispatchResult, setDispatchResult] = useState<{ sent: number; pendingNoPdf: number } | null>(null);
+
   function handleSave() {
     startTransition(async () => {
       setSavedOk(false);
@@ -135,6 +142,15 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
       });
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
+    });
+  }
+
+  function handleDispatch() {
+    setDispatchResult(null);
+    startDispatchTransition(async () => {
+      const result = await dispatchPendingInvoices();
+      setDispatchResult(result);
+      router.refresh();
     });
   }
 
@@ -511,6 +527,35 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
         subtitle="Histórico de NFS-e emitidas pela plataforma."
         icon="file"
       >
+        {/* Envio manual de notificações */}
+        {(() => {
+          const pendentes = invoices.filter((i) => i.status === 'autorizada' && !i.notifiedAt).length;
+          return (
+            <div className="col gap-8" style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 9, background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>
+              <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-accent"
+                  disabled={isDispatching || pendentes === 0}
+                  onClick={handleDispatch}
+                >
+                  <Icon name="send" size={14} />
+                  {isDispatching ? 'Enviando…' : `Enviar notas pendentes (${pendentes})`}
+                </button>
+                {dispatchResult && (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {dispatchResult.sent} nota{dispatchResult.sent !== 1 ? 's' : ''} enviada{dispatchResult.sent !== 1 ? 's' : ''}
+                    {dispatchResult.pendingNoPdf > 0 && ` · ${dispatchResult.pendingNoPdf} ainda sem PDF (clique de novo mais tarde)`}
+                  </span>
+                )}
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
+                Notas emitidas há pouco podem não ter o PDF pronto ainda — aguarde ~1 hora e clique de novo.
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Filtros */}
         <div className="col gap-12" style={{ marginBottom: 20 }}>
           <div className="field-group">

@@ -2,12 +2,13 @@
 
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { fiscalConfig, invoices } from '@/db/schema';
+import { fiscalConfig, invoices, users } from '@/db/schema';
 import { getTenantId } from '@/lib/tenant';
 import { revalidatePath } from 'next/cache';
 import { emitInvoiceForPayment, fetchAndStoreInvoicePdf } from '@/lib/nfse/emit';
 import { cancelInvoiceForPayment } from '@/lib/nfse/cancel';
-import { eq } from 'drizzle-orm';
+import { notifyInvoice } from '@/lib/notifications';
+import { eq, and, isNull } from 'drizzle-orm';
 
 async function assertAdmin() {
   const session = await auth();
@@ -52,4 +53,36 @@ export async function cancelInvoiceManual(invoiceId: string, motivo: string) {
   revalidatePath('/admin/settings');
   revalidatePath('/admin/students');
   return result;
+}
+
+export async function dispatchPendingInvoices(): Promise<{ sent: number; pendingNoPdf: number }> {
+  await assertAdmin();
+  const tenantId = await getTenantId();
+  const pending = await db.select().from(invoices).where(
+    and(
+      eq(invoices.tenantId, tenantId),
+      eq(invoices.status, 'autorizada'),
+      isNull(invoices.notifiedAt),
+    ),
+  );
+  let sent = 0;
+  let pendingNoPdf = 0;
+  for (const inv of pending) {
+    // Garante o PDF: se ainda não tem, tenta baixar do DANFSE agora.
+    let pdfUrl = inv.pdfUrl;
+    if (!pdfUrl) pdfUrl = await fetchAndStoreInvoicePdf(inv.id);
+    if (!pdfUrl) { pendingNoPdf++; continue; } // PDF ainda não disponível — fica pendente
+    const [buyer] = await db.select().from(users).where(eq(users.id, inv.userId)).limit(1);
+    if (!buyer) { pendingNoPdf++; continue; }
+    try {
+      await notifyInvoice(
+        { name: buyer.name, email: buyer.email, phone: buyer.phone },
+        { pdfUrl, numero: inv.numero },
+      );
+    } catch { /* falha de envio não trava o lote */ }
+    await db.update(invoices).set({ notifiedAt: new Date() }).where(eq(invoices.id, inv.id));
+    sent++;
+  }
+  revalidatePath('/admin/fiscal');
+  return { sent, pendingNoPdf };
 }
