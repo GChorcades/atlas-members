@@ -65,6 +65,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     .where(and(eq(enrollments.tenantId, tenantId), eq(enrollments.courseId, id)));
   const studentCount = Number(studentRow?.count ?? 0);
 
+  // Certificado: curso concluído = todas as aulas publicadas têm progresso done.
+  const publishedLessons = allLessonsFlat.filter((l) => l.published);
+  const certificateAvailable =
+    publishedLessons.length > 0 && publishedLessons.every((l) => doneSet.has(l.id));
+
   const result = {
     ...course,
     lessonCount,
@@ -73,6 +78,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     students: studentCount,
     tags: tags.map((t) => t.tag),
     enrolled: !!enrollment,
+    certificateAvailable,
     progress: enrollment?.progress ?? 0,
     lastLessonId: enrollment?.lastLessonId ?? null,
     modules: courseModules.map((mod) => ({

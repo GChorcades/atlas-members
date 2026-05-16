@@ -47,6 +47,7 @@ type Course = {
   progress: number;
   lastLessonId: string | null;
   enrolled: boolean;
+  certificateAvailable: boolean;
 };
 
 export default function CoursePage() {
@@ -236,6 +237,35 @@ export default function CoursePage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Certificado de conclusão */}
+          <div className="card" style={{ padding: 20 }}>
+            <div className="eyebrow">Certificado</div>
+            {course.certificateAvailable ? (
+              <>
+                <p className="muted mt-12" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  Você concluiu este curso. Baixe seu certificado em PNG.
+                </p>
+                <a
+                  href={`/api/courses/${course.id}/certificate`}
+                  className="btn btn-accent mt-12"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  download
+                >
+                  <Icon name="certificate" size={15} /> Baixar certificado
+                </a>
+              </>
+            ) : (
+              <div className="card-muted mt-12 row gap-12" style={{ fontSize: 13 }}>
+                <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+                  <Icon name="certificate" size={15} />
+                </span>
+                <span className="muted" style={{ lineHeight: 1.45 }}>
+                  Conclua o curso para liberar o certificado.
+                </span>
+              </div>
+            )}
           </div>
           {course.tags.length > 0 && (
             <div className="card" style={{ padding: 20 }}>
