@@ -86,7 +86,7 @@ export async function fetchAndStoreInvoicePdf(invoiceId: string): Promise<string
     const company = await getFiscalCompany(inv.tenantId);
     const pdf = await baixarDanfse(inv.chaveAcesso, company);
     const blob = await put(`nfse/${inv.chaveAcesso}.pdf`, pdf, {
-      access: 'public', contentType: 'application/pdf',
+      access: 'public', contentType: 'application/pdf', allowOverwrite: true,
     });
     await db.update(invoices).set({ pdfUrl: blob.url }).where(eq(invoices.id, inv.id));
     try {
