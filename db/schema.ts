@@ -27,6 +27,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', ['active', '
 export const subscriptionCycleEnum = pgEnum('subscription_cycle', [
   'WEEKLY', 'BIWEEKLY', 'MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY',
 ]);
+export const invoiceStatusEnum = pgEnum('invoice_status', ['pendente', 'autorizada', 'erro', 'cancelada']);
 
 // ─── Tenants (multi-tenant) ─────────────────────────────────────────────────────
 
@@ -70,6 +71,13 @@ export const users = pgTable('users', {
   streak: integer('streak').notNull().default(0),
   location: varchar('location', { length: 255 }),
   phone: varchar('phone', { length: 50 }),
+  addrLogradouro: varchar('addr_logradouro', { length: 255 }),
+  addrNumero: varchar('addr_numero', { length: 30 }),
+  addrComplemento: varchar('addr_complemento', { length: 120 }),
+  addrBairro: varchar('addr_bairro', { length: 120 }),
+  addrCidade: varchar('addr_cidade', { length: 120 }),
+  addrUf: varchar('addr_uf', { length: 2 }),
+  addrCep: varchar('addr_cep', { length: 9 }),
   cpfCnpj: varchar('cpf_cnpj', { length: 30 }),
   asaasCustomerId: varchar('asaas_customer_id', { length: 100 }),
   suspended: boolean('suspended').notNull().default(false),
@@ -256,6 +264,69 @@ export const settings = pgTable('settings', {
   value: text('value'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.tenantId, t.key] })]);
+
+// ─── Fiscal Config ────────────────────────────────────────────────────────────
+
+export const fiscalConfig = pgTable('fiscal_config', {
+  tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  tpAmb: varchar('tp_amb', { length: 1 }).notNull().default('2'),
+  cnpj: varchar('cnpj', { length: 14 }),
+  inscricaoMunicipal: varchar('inscricao_municipal', { length: 30 }),
+  razaoSocial: varchar('razao_social', { length: 255 }),
+  email: varchar('email', { length: 255 }),
+  fone: varchar('fone', { length: 20 }),
+  logradouro: varchar('logradouro', { length: 255 }),
+  numero: varchar('numero', { length: 30 }),
+  complemento: varchar('complemento', { length: 120 }),
+  bairro: varchar('bairro', { length: 120 }),
+  codMunicipio: varchar('cod_municipio', { length: 7 }),
+  uf: varchar('uf', { length: 2 }),
+  cep: varchar('cep', { length: 9 }),
+  opSimpNac: varchar('op_simp_nac', { length: 1 }),
+  regApTribSN: varchar('reg_ap_trib_sn', { length: 1 }),
+  regEspTrib: varchar('reg_esp_trib', { length: 1 }),
+  tribISSQN: varchar('trib_issqn', { length: 1 }),
+  tpRetISSQN: varchar('tp_ret_issqn', { length: 1 }),
+  cLocIncid: varchar('c_loc_incid', { length: 7 }),
+  xLocIncid: varchar('x_loc_incid', { length: 150 }),
+  xLocEmi: varchar('x_loc_emi', { length: 150 }),
+  xLocPrestacao: varchar('x_loc_prestacao', { length: 150 }),
+  cTribNac: varchar('c_trib_nac', { length: 20 }),
+  cTribMun: varchar('c_trib_mun', { length: 20 }),
+  cNBS: varchar('c_nbs', { length: 20 }),
+  xTribNac: varchar('x_trib_nac', { length: 255 }),
+  xTribMun: varchar('x_trib_mun', { length: 255 }),
+  xNBS: varchar('x_nbs', { length: 255 }),
+  serie: varchar('serie', { length: 5 }).notNull().default('1'),
+  descricaoServicoPadrao: text('descricao_servico_padrao'),
+  pfxData: text('pfx_data'),
+  pfxPassword: text('pfx_password'),
+  certSubject: varchar('cert_subject', { length: 500 }),
+  certValidoAte: timestamp('cert_valido_ate'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Invoices (NFS-e) ─────────────────────────────────────────────────────────
+
+export const invoices = pgTable('invoices', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(DEFAULT_TENANT_ID).references(() => tenants.id, { onDelete: 'cascade' }),
+  paymentId: text('payment_id').references(() => payments.id, { onDelete: 'set null' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: invoiceStatusEnum('status').notNull().default('pendente'),
+  chaveAcesso: varchar('chave_acesso', { length: 60 }),
+  numero: varchar('numero', { length: 20 }),
+  serie: varchar('serie', { length: 5 }),
+  valor: real('valor').notNull(),
+  dpsXml: text('dps_xml'),
+  nfseXml: text('nfse_xml'),
+  pdfUrl: text('pdf_url'),
+  errorMessage: text('error_message'),
+  responseJson: text('response_json'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  canceledAt: timestamp('canceled_at'),
+});
 
 // ─── Payments & Subscriptions (Asaas) ────────────────────────────────────────
 
