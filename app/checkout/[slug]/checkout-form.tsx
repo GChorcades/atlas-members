@@ -41,6 +41,7 @@ export default function CheckoutScreen({
   // CEP lookup
   const [cep, setCep] = useState('');
   const [address, setAddress] = useState({ street: '', neighborhood: '', city: '', uf: '' });
+  const [addressNumber, setAddressNumber] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState('');
 
@@ -120,6 +121,11 @@ export default function CheckoutScreen({
       cpfCnpj: String(fd.get('cpfCnpj') ?? '').replace(/\D/g, ''),
       phone: String(fd.get('phone') ?? '').trim(),
       postalCode: String(fd.get('postalCode') ?? '').replace(/\D/g, ''),
+      street: address.street.trim(),
+      addressNumber: addressNumber.trim(),
+      neighborhood: address.neighborhood.trim(),
+      city: address.city.trim(),
+      uf: address.uf.trim(),
       billingType,
       couponCode: appliedCoupon?.code,
       installmentCount: billingType === 'CREDIT_CARD' ? installments : undefined,
@@ -135,8 +141,9 @@ export default function CheckoutScreen({
       } : undefined,
     };
 
-    if (!payload.name || !payload.email || !payload.cpfCnpj || !payload.phone || !payload.postalCode) {
-      setError('Preencha e-mail, nome, celular, CPF e CEP.');
+    if (!payload.name || !payload.email || !payload.cpfCnpj || !payload.phone || !payload.postalCode
+        || !payload.street || !payload.addressNumber || !payload.neighborhood || !payload.city || !payload.uf) {
+      setError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
       return;
     }
 
@@ -211,31 +218,30 @@ export default function CheckoutScreen({
               <input
                 className="input-field"
                 name="addressNumber"
-                placeholder="Número"
+                required
+                placeholder="Número*"
                 inputMode="numeric"
+                value={addressNumber}
+                onChange={(e) => setAddressNumber(e.target.value)}
               />
             </label>
           </div>
-          {(address.street || address.city) && (
-            <div className="row" style={{ gap: 12 }}>
-              <label className="field-group" style={{ flex: 2 }}>
-                <input className="input-field" name="street" placeholder="Rua" value={address.street} onChange={(e) => setAddress((a) => ({ ...a, street: e.target.value }))} />
-              </label>
-              <label className="field-group" style={{ flex: 1 }}>
-                <input className="input-field" name="neighborhood" placeholder="Bairro" value={address.neighborhood} onChange={(e) => setAddress((a) => ({ ...a, neighborhood: e.target.value }))} />
-              </label>
-            </div>
-          )}
-          {(address.street || address.city) && (
-            <div className="row" style={{ gap: 12 }}>
-              <label className="field-group" style={{ flex: 2 }}>
-                <input className="input-field" name="city" placeholder="Cidade" value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} />
-              </label>
-              <label className="field-group" style={{ flex: 1, maxWidth: 90 }}>
-                <input className="input-field" name="uf" placeholder="UF" maxLength={2} value={address.uf} onChange={(e) => setAddress((a) => ({ ...a, uf: e.target.value.toUpperCase() }))} />
-              </label>
-            </div>
-          )}
+          <div className="row" style={{ gap: 12 }}>
+            <label className="field-group" style={{ flex: 2 }}>
+              <input className="input-field" name="street" required placeholder="Rua / Logradouro*" value={address.street} onChange={(e) => setAddress((a) => ({ ...a, street: e.target.value }))} />
+            </label>
+            <label className="field-group" style={{ flex: 1 }}>
+              <input className="input-field" name="neighborhood" required placeholder="Bairro*" value={address.neighborhood} onChange={(e) => setAddress((a) => ({ ...a, neighborhood: e.target.value }))} />
+            </label>
+          </div>
+          <div className="row" style={{ gap: 12 }}>
+            <label className="field-group" style={{ flex: 2 }}>
+              <input className="input-field" name="city" required placeholder="Cidade*" value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} />
+            </label>
+            <label className="field-group" style={{ flex: 1, maxWidth: 90 }}>
+              <input className="input-field" name="uf" required placeholder="UF*" maxLength={2} value={address.uf} onChange={(e) => setAddress((a) => ({ ...a, uf: e.target.value.toUpperCase() }))} />
+            </label>
+          </div>
         </Section>
 
         <Section title="Cupom de desconto" subtitle="Tem um cupom? Aplique antes de finalizar.">

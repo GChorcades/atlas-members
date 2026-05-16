@@ -1026,6 +1026,11 @@ export async function createPublicCheckoutCharge(slug: string, data: {
   cpfCnpj: string;
   phone: string;
   postalCode: string;
+  street: string;
+  addressNumber: string;
+  neighborhood: string;
+  city: string;
+  uf: string;
   billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
   installmentCount?: number;
   couponCode?: string;
@@ -1079,13 +1084,26 @@ export async function createPublicCheckoutCharge(slug: string, data: {
       passwordHash: hash,
       cpfCnpj: data.cpfCnpj,
       phone: data.phone,
+      addrLogradouro: data.street,
+      addrNumero: data.addressNumber,
+      addrComplemento: '',
+      addrBairro: data.neighborhood,
+      addrCidade: data.city,
+      addrUf: data.uf,
+      addrCep: data.postalCode,
     });
     [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   } else {
-    // Update CPF/phone if missing
+    // Update CPF/phone/address if missing
     const patch: Partial<typeof users.$inferInsert> = {};
     if (!user.cpfCnpj) patch.cpfCnpj = data.cpfCnpj;
     if (!user.phone && data.phone) patch.phone = data.phone;
+    if (!user.addrLogradouro) patch.addrLogradouro = data.street;
+    if (!user.addrNumero) patch.addrNumero = data.addressNumber;
+    if (!user.addrBairro) patch.addrBairro = data.neighborhood;
+    if (!user.addrCidade) patch.addrCidade = data.city;
+    if (!user.addrUf) patch.addrUf = data.uf;
+    if (!user.addrCep) patch.addrCep = data.postalCode;
     if (Object.keys(patch).length) {
       await db.update(users).set({ ...patch, updatedAt: new Date() }).where(eq(users.id, user.id));
       user = { ...user, ...patch };
@@ -1101,6 +1119,11 @@ export async function createPublicCheckoutCharge(slug: string, data: {
       cpfCnpj: data.cpfCnpj,
       phone: data.phone,
       mobilePhone: data.phone,
+      address: data.street,
+      addressNumber: data.addressNumber,
+      province: data.neighborhood,
+      city: data.city,
+      state: data.uf,
       postalCode: data.postalCode,
       externalReference: user.id,
     });
@@ -1114,6 +1137,11 @@ export async function createPublicCheckoutCharge(slug: string, data: {
         cpfCnpj: data.cpfCnpj,
         phone: data.phone,
         mobilePhone: data.phone,
+        address: data.street,
+        addressNumber: data.addressNumber,
+        province: data.neighborhood,
+        city: data.city,
+        state: data.uf,
         postalCode: data.postalCode,
       });
     } catch { /* ignore update errors */ }
@@ -1143,7 +1171,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
       email: user.email,
       cpfCnpj: data.cpfCnpj,
       postalCode: data.postalCode,
-      addressNumber: 'S/N',
+      addressNumber: data.addressNumber,
       phone: data.phone,
     } : undefined,
   });
