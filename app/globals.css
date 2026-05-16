@@ -860,3 +860,65 @@ textarea.input-field { resize: vertical; min-height: 80px; }
   75%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, calc(-50% - 30px)) scale(0.96); }
 }
+
+/* ─── Painel de Vendas ─────────────────────────────────────────────────────── */
+.sales-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.sales-period-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 180px;
+  text-align: center;
+}
+/* Gráfico de barras SVG */
+.bar-chart svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+.bar-chart rect {
+  transition: opacity 140ms;
+}
+.bar-chart rect:hover {
+  opacity: 0.8;
+}
+/* Cartões de nota fiscal com destaque (link para /admin/fiscal) */
+.sales-nota-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 140ms, background 140ms;
+}
+.sales-nota-card-warning {
+  border-color: var(--warning);
+}
+.sales-nota-card-danger {
+  border-color: var(--danger);
+}
+.sales-nota-card:hover {
+  background: var(--bg-hover);
+}
+.sales-nota-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+}
+.sales-nota-flag-warning {
+  color: var(--warning);
+  background: var(--bg-muted);
+}
+.sales-nota-flag-danger {
+  color: var(--danger);
+  background: var(--bg-muted);
+}
+@media (max-width: 760px) {
+  .sales-stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .sales-period { flex-wrap: wrap; }
+}

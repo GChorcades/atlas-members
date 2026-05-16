@@ -64,6 +64,8 @@ export function Icon({ name, size = 20, style, className }: IconProps) {
     case 'grip': return <svg {...props}><circle cx="9" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1" fill="currentColor" stroke="none"/></svg>;
     case 'users': return <svg {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
     case 'cart': return <svg {...props}><path d="M3 4h2l2 12h12l2-9H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>;
+    case 'chart': return <svg {...props}><path d="M4 20h16"/><rect x="5" y="12" width="3.5" height="6" rx="0.6"/><rect x="10.25" y="8" width="3.5" height="10" rx="0.6"/><rect x="15.5" y="4" width="3.5" height="14" rx="0.6"/></svg>;
+    case 'chevron-left': return <svg {...props}><path d="m15 6-6 6 6 6"/></svg>;
     default: return null;
   }
 }

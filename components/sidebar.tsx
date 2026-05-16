@@ -18,6 +18,7 @@ const ADMIN_ITEMS = [
   { href: '/admin/students', label: 'Alunos', icon: 'profile' },
   { href: '/admin/comments', label: 'Comentários', icon: 'chat' },
   { href: '/admin/checkouts', label: 'Checkouts', icon: 'cart' },
+  { href: '/admin/sales', label: 'Vendas', icon: 'chart' },
   { href: '/admin/fiscal', label: 'Nota Fiscal', icon: 'file' },
   { href: '/admin/settings', label: 'Configurações', icon: 'settings' },
 ];
