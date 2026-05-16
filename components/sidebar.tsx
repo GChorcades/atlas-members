@@ -13,7 +13,7 @@ const NAV_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
-  { href: '/admin/courses', label: 'Cursos', icon: 'courses' },
+  { href: '/admin/courses', label: 'Cursos', icon: 'book' },
   { href: '/admin/cohorts', label: 'Turmas', icon: 'users' },
   { href: '/admin/students', label: 'Alunos', icon: 'profile' },
   { href: '/admin/comments', label: 'Comentários', icon: 'chat' },

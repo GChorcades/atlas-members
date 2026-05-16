@@ -18,6 +18,7 @@ export function Icon({ name, size = 20, style, className }: IconProps) {
   switch (name) {
     case 'home': return <svg {...props}><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>;
     case 'courses': return <svg {...props}><path d="M4 5h16v3H4z"/><path d="M5 8v11h14V8"/><path d="M9 12h6"/></svg>;
+    case 'book': return <svg {...props}><path d="M12 6c-1.6-1.1-4.1-2-8-2v13c3.9 0 6.4.9 8 2"/><path d="M12 6c1.6-1.1 4.1-2 8-2v13c-3.9 0-6.4.9-8 2"/><path d="M12 6v13"/></svg>;
     case 'trail': return <svg {...props}><path d="M6 4v12a3 3 0 0 0 3 3h6a3 3 0 0 1 0 6"/><path d="M6 4 4 6"/><path d="M6 4l2 2"/><circle cx="15" cy="22" r="0.5" fill="currentColor"/></svg>;
     case 'progress': return <svg {...props}><path d="M3 20V8"/><path d="M9 20V12"/><path d="M15 20V4"/><path d="M21 20V14"/></svg>;
     case 'profile': return <svg {...props}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>;
