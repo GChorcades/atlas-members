@@ -8,6 +8,13 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 
 **Repositório:** https://github.com/GChorcades/atlas-members (público). Branch principal: `main`. Credencial salva no macOS keychain — `git push` funciona direto sem prompt.
 
+## Diretrizes de trabalho
+
+- **Design = Design System.** A abordagem de design do projeto é o **Design System** documentado em `DESIGN-SYSTEM.md`. Qualquer trabalho de UI deve seguir os tokens (CSS custom properties) e as classes/componentes de lá — **não** introduzir cores, sombras, raios ou espaçamentos avulsos. Ao mexer em estilo, consulte `DESIGN-SYSTEM.md` primeiro.
+- **Use subagentes sempre que possível.** Delegue tarefas a subagentes (ver a skill `subagent-driven-development`): um subagente fresco por tarefa, com contexto montado sob medida. Isso isola o trabalho, preserva o contexto da sessão principal e mantém a qualidade. Prefira delegar a executar tudo inline.
+- **Idioma:** responder e escrever sempre em português do Brasil (pt-BR).
+- **Deploy:** não é automático no push — usar `vercel --prod --yes`. Features grandes vão em branch própria e só entram na `main` depois de testadas.
+
 ## Comandos
 
 - `npm run dev` — Next dev em :3001
