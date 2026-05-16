@@ -86,3 +86,33 @@ export async function dispatchPendingInvoices(): Promise<{ sent: number; pending
   revalidatePath('/admin/fiscal');
   return { sent, pendingNoPdf };
 }
+
+export async function resendInvoices(invoiceIds: string[]): Promise<{ sent: number; failed: number }> {
+  await assertAdmin();
+  const tenantId = await getTenantId();
+  let sent = 0;
+  let failed = 0;
+  for (const id of invoiceIds) {
+    const [inv] = await db.select().from(invoices)
+      .where(and(eq(invoices.id, id), eq(invoices.tenantId, tenantId), eq(invoices.status, 'autorizada')))
+      .limit(1);
+    if (!inv) { failed++; continue; }
+    let pdfUrl = inv.pdfUrl;
+    if (!pdfUrl) pdfUrl = await fetchAndStoreInvoicePdf(inv.id);
+    if (!pdfUrl) { failed++; continue; }
+    const [buyer] = await db.select().from(users).where(eq(users.id, inv.userId)).limit(1);
+    if (!buyer) { failed++; continue; }
+    try {
+      await notifyInvoice(
+        { name: buyer.name, email: buyer.email, phone: buyer.phone },
+        { pdfUrl, numero: inv.numero },
+      );
+      await db.update(invoices).set({ notifiedAt: new Date() }).where(eq(invoices.id, inv.id));
+      sent++;
+    } catch {
+      failed++;
+    }
+  }
+  revalidatePath('/admin/fiscal');
+  return { sent, failed };
+}

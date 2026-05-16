@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
-import { saveFiscalConfig, retryInvoicePdf, cancelInvoiceManual, dispatchPendingInvoices } from '@/lib/fiscal-actions';
+import { saveFiscalConfig, retryInvoicePdf, cancelInvoiceManual, dispatchPendingInvoices, resendInvoices } from '@/lib/fiscal-actions';
 import type { getFiscalConfigForUI } from '@/lib/fiscal-config';
 
 type FiscalConfigUI = Awaited<ReturnType<typeof getFiscalConfigForUI>>;
@@ -104,6 +104,13 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
   const [isDispatching, startDispatchTransition] = useTransition();
   const [dispatchResult, setDispatchResult] = useState<{ sent: number; pendingNoPdf: number } | null>(null);
 
+  // ── resend state ─────────────────────────────────────────────────────────
+  const [isResending, startResendTransition] = useTransition();
+  const [resendResult, setResendResult] = useState<{ sent: number; failed: number } | null>(null);
+
+  // ── selection state (notas emitidas) ─────────────────────────────────────
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
   function handleSave() {
     startTransition(async () => {
       setSavedOk(false);
@@ -150,6 +157,16 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
     startDispatchTransition(async () => {
       const result = await dispatchPendingInvoices();
       setDispatchResult(result);
+      router.refresh();
+    });
+  }
+
+  function handleResend() {
+    setResendResult(null);
+    startResendTransition(async () => {
+      const result = await resendInvoices([...selected]);
+      setResendResult(result);
+      setSelected(new Set());
       router.refresh();
     });
   }
@@ -530,8 +547,14 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
         {/* Envio manual de notificações */}
         {(() => {
           const pendentes = invoices.filter((i) => i.status === 'autorizada' && !i.notifiedAt).length;
+          const totalAutorizadas = invoices.filter((i) => i.status === 'autorizada').length;
+          const enviadas = invoices.filter((i) => i.status === 'autorizada' && !!i.notifiedAt).length;
           return (
             <div className="col gap-8" style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 9, background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>
+              {/* Resumo de envios */}
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                {enviadas} de {totalAutorizadas} nota{totalAutorizadas !== 1 ? 's' : ''} enviada{enviadas !== 1 ? 's' : ''}
+              </p>
               <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   type="button"
@@ -542,10 +565,25 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
                   <Icon name="send" size={14} />
                   {isDispatching ? 'Enviando…' : `Enviar notas pendentes (${pendentes})`}
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  disabled={isResending || selected.size === 0}
+                  onClick={handleResend}
+                >
+                  <Icon name="send" size={14} />
+                  {isResending ? 'Reenviando…' : `Reenviar selecionadas (${selected.size})`}
+                </button>
                 {dispatchResult && (
                   <span className="muted" style={{ fontSize: 12 }}>
                     {dispatchResult.sent} nota{dispatchResult.sent !== 1 ? 's' : ''} enviada{dispatchResult.sent !== 1 ? 's' : ''}
                     {dispatchResult.pendingNoPdf > 0 && ` · ${dispatchResult.pendingNoPdf} ainda sem PDF (clique de novo mais tarde)`}
+                  </span>
+                )}
+                {resendResult && (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {resendResult.sent} nota{resendResult.sent !== 1 ? 's' : ''} reenviada{resendResult.sent !== 1 ? 's' : ''}
+                    {resendResult.failed > 0 && ` · ${resendResult.failed} falha${resendResult.failed !== 1 ? 's' : ''}`}
                   </span>
                 )}
               </div>
@@ -610,27 +648,87 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
         ) : filteredInvoices.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Nenhuma nota encontrada para o filtro.</p>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Comprador</th>
-                  <th>Valor</th>
-                  <th>Status</th>
-                  <th style={{ width: 200 }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInvoices.map((inv) => (
-                  <InvoiceRow key={inv.id} inv={inv} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <InvoiceTable
+            filteredInvoices={filteredInvoices}
+            selected={selected}
+            setSelected={setSelected}
+          />
         )}
       </SectionCard>
       </>)}
+    </div>
+  );
+}
+
+function InvoiceTable({
+  filteredInvoices,
+  selected,
+  setSelected,
+}: {
+  filteredInvoices: InvoiceRow[];
+  selected: Set<string>;
+  setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
+}) {
+  const visibleAutorizadas = filteredInvoices.filter((i) => i.status === 'autorizada');
+  const allVisibleSelected = visibleAutorizadas.length > 0 && visibleAutorizadas.every((i) => selected.has(i.id));
+
+  function toggleAll() {
+    if (allVisibleSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        visibleAutorizadas.forEach((i) => next.delete(i.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        visibleAutorizadas.forEach((i) => next.add(i.id));
+        return next;
+      });
+    }
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th style={{ width: 36 }}>
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleAll}
+                disabled={visibleAutorizadas.length === 0}
+                title="Selecionar todas visíveis"
+              />
+            </th>
+            <th>Data</th>
+            <th>Comprador</th>
+            <th>Valor</th>
+            <th>Status</th>
+            <th>Envio</th>
+            <th style={{ width: 200 }}>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredInvoices.map((inv) => (
+            <InvoiceRow
+              key={inv.id}
+              inv={inv}
+              selected={selected.has(inv.id)}
+              onToggleSelect={() => {
+                if (inv.status !== 'autorizada') return;
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(inv.id)) next.delete(inv.id);
+                  else next.add(inv.id);
+                  return next;
+                });
+              }}
+            />
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -642,7 +740,7 @@ const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }>
   cancelada:  { label: 'Cancelada',  bg: '#fef3c7', color: '#92400e' },
 };
 
-function InvoiceRow({ inv }: { inv: InvoiceRow }) {
+function InvoiceRow({ inv, selected, onToggleSelect }: { inv: InvoiceRow; selected: boolean; onToggleSelect: () => void }) {
   const [isPending, startTransition] = useTransition();
   const badge = STATUS_BADGE[inv.status] ?? STATUS_BADGE.pendente;
 
@@ -662,6 +760,15 @@ function InvoiceRow({ inv }: { inv: InvoiceRow }) {
 
   return (
     <tr>
+      <td style={{ width: 36, textAlign: 'center' }}>
+        {inv.status === 'autorizada' ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+          />
+        ) : null}
+      </td>
       <td className="muted mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
         {new Date(inv.createdAt).toLocaleDateString('pt-BR')}
       </td>
@@ -680,6 +787,15 @@ function InvoiceRow({ inv }: { inv: InvoiceRow }) {
           <p className="muted" style={{ fontSize: 11, marginTop: 2, maxWidth: 220 }} title={inv.errorMessage}>
             {inv.errorMessage.slice(0, 60)}{inv.errorMessage.length > 60 ? '…' : ''}
           </p>
+        )}
+      </td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {inv.notifiedAt ? (
+          <span style={{ fontSize: 11, color: '#166534', fontWeight: 500 }}>
+            ✓ Enviada <span className="muted" style={{ fontWeight: 400 }}>({new Date(inv.notifiedAt).toLocaleDateString('pt-BR')})</span>
+          </span>
+        ) : (
+          <span className="muted" style={{ fontSize: 11 }}>Não enviada</span>
         )}
       </td>
       <td>
