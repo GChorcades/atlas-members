@@ -12,6 +12,7 @@ import { sendEmail } from '@/lib/brevo';
 import { sendWhatsApp } from '@/lib/zapi';
 import { getTenantId } from '@/lib/tenant';
 import { getTenantEmail } from '@/lib/tenant-email';
+import { emitInvoiceForPayment } from '@/lib/nfse/emit';
 
 async function getSession() {
   const session = await auth();
@@ -1245,6 +1246,7 @@ export async function createPublicCheckoutCharge(slug: string, data: {
         active: true,
       });
     }
+    await emitInvoiceForPayment(paymentRowId).catch(() => {});
   }
 
   return { ok: true, paymentId: paymentRowId };

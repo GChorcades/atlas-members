@@ -5,6 +5,10 @@ import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { mapAsaasStatusToOurs } from '@/lib/asaas';
 import { notifyPaymentConfirmed } from '@/lib/notifications';
+import { emitInvoiceForPayment } from '@/lib/nfse/emit';
+import { cancelInvoiceForPayment } from '@/lib/nfse/cancel';
+
+export const maxDuration = 60;
 
 type AsaasEvent =
   | 'PAYMENT_RECEIVED'
@@ -138,6 +142,9 @@ export async function POST(req: Request) {
           console.log(`[asaas-webhook] Enrolled user ${row.userId} in course ${row.courseId}`);
         }
       }
+      if (row) {
+        await emitInvoiceForPayment(row.id).catch(() => {});
+      }
     }
   }
 
@@ -215,6 +222,9 @@ export async function POST(req: Request) {
       if (user.plan !== 'lifetime') {
         await db.update(users).set({ plan: 'free', updatedAt: new Date() }).where(eq(users.id, user.id));
         console.log(`[asaas-webhook] Downgraded ${email} → free (${event})`);
+      }
+      if (event === 'PAYMENT_REFUNDED' && paymentRow) {
+        await cancelInvoiceForPayment(paymentRow.id).catch(() => {});
       }
       break;
     }
