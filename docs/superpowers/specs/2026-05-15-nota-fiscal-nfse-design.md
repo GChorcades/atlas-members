@@ -136,6 +136,10 @@ Novo template `notifyInvoice` em `lib/notifications.ts`.
 - `users` ganha colunas de endereço estruturado: `addrLogradouro`,
   `addrNumero`, `addrComplemento`, `addrBairro`, `addrCidade`, `addrUf`,
   `addrCep`.
+- O endereço completo passa a ser enviado também ao **Asaas** (hoje só o
+  CEP vai): `asaasCreateCustomer` / `asaasUpdateCustomer` e o
+  `creditCardHolderInfo` recebem `address`, `addressNumber`, `complement`,
+  `province` (bairro), `city`, `state`, `postalCode`.
 
 ## Telas
 
