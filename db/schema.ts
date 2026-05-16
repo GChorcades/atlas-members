@@ -326,6 +326,7 @@ export const invoices = pgTable('invoices', {
   responseJson: text('response_json'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   canceledAt: timestamp('canceled_at'),
+  notifiedAt: timestamp('notified_at'),
 });
 
 // ─── Payments & Subscriptions (Asaas) ────────────────────────────────────────
