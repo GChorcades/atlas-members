@@ -4,21 +4,6 @@ import { useState } from 'react';
 import { Icon } from '@/components/icons';
 import { saveSettings } from '@/lib/actions';
 import { DEFAULT_LGPD_TERMS } from '@/lib/lgpd-default';
-import { FiscalSection } from './fiscal-section';
-import type { getFiscalConfigForUI } from '@/lib/fiscal-config';
-
-type InvoiceRow = {
-  id: string;
-  status: 'pendente' | 'autorizada' | 'erro' | 'cancelada';
-  numero: string | null;
-  valor: number;
-  pdfUrl: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  paymentId: string | null;
-  buyerName: string | null;
-};
-
 type Props = {
   initial: Record<string, string>;
   secretsSet: Record<string, boolean>;
@@ -32,8 +17,6 @@ type Props = {
     zapiToken: boolean;
     zapiClientToken: boolean;
   };
-  fiscalConfig: Awaited<ReturnType<typeof getFiscalConfigForUI>>;
-  invoices: InvoiceRow[];
 };
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -61,8 +44,8 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
   );
 }
 
-export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyEnv, messagingEnv, fiscalConfig, invoices }: Props) {
-  const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd' | 'fiscal'>('brand');
+export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyEnv, messagingEnv }: Props) {
+  const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd'>('brand');
   const [zapiCheck, setZapiCheck] = useState<{ loading: boolean; connected?: boolean; error?: string }>({ loading: false });
 
   async function checkZapi() {
@@ -186,9 +169,6 @@ export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyE
         </button>
         <button className="tab" data-active={tab === 'lgpd'} onClick={() => setTab('lgpd')}>
           <Icon name="file" size={14} /> LGPD
-        </button>
-        <button className="tab" data-active={tab === 'fiscal'} onClick={() => setTab('fiscal')}>
-          <Icon name="file" size={14} /> Nota Fiscal
         </button>
       </div>
 
@@ -695,9 +675,6 @@ export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyE
           </SectionCard>
         </div>
       )}
-
-      {/* ─── NOTA FISCAL ────────────────────────────────── */}
-      {tab === 'fiscal' && <FiscalSection fiscalConfig={fiscalConfig} invoices={invoices} />}
 
       {/* ─── LGPD ───────────────────────────────────────── */}
       {tab === 'lgpd' && (

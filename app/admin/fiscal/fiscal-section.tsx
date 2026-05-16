@@ -17,6 +17,7 @@ type InvoiceRow = {
   createdAt: string;
   paymentId: string | null;
   buyerName: string | null;
+  buyerCpf: string | null;
 };
 
 function SectionCard({ title, subtitle, icon, children }: { title: string; subtitle: string; icon: string; children: React.ReactNode }) {
@@ -139,6 +140,35 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
 
   // ── sub-tab state ────────────────────────────────────────────────────────
   const [subTab, setSubTab] = useState<'config' | 'notas'>('config');
+
+  // ── filter state (notas emitidas) ────────────────────────────────────────
+  const [filterText, setFilterText] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+
+  const filteredInvoices = invoices.filter((inv) => {
+    // Text filter: name or CPF (digits-only comparison for CPF)
+    if (filterText) {
+      const q = filterText.toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
+      const nameMatch = inv.buyerName?.toLowerCase().includes(q) ?? false;
+      const cpfMatch = qDigits
+        ? (inv.buyerCpf?.replace(/\D/g, '').includes(qDigits) ?? false)
+        : false;
+      if (!nameMatch && !cpfMatch) return false;
+    }
+    // Date from (inclusive)
+    if (filterFrom) {
+      const from = new Date(filterFrom + 'T00:00:00');
+      if (new Date(inv.createdAt) < from) return false;
+    }
+    // Date to (inclusive, end of day)
+    if (filterTo) {
+      const to = new Date(filterTo + 'T23:59:59.999');
+      if (new Date(inv.createdAt) > to) return false;
+    }
+    return true;
+  });
 
   // ── certificate upload state ─────────────────────────────────────────────
   const [certFile, setCertFile] = useState<File | null>(null);
@@ -481,8 +511,59 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
         subtitle="Histórico de NFS-e emitidas pela plataforma."
         icon="file"
       >
+        {/* Filtros */}
+        <div className="col gap-12" style={{ marginBottom: 20 }}>
+          <div className="field-group">
+            <label className="field-label">Buscar por nome ou CPF</label>
+            <input
+              className="input-field"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Nome do comprador ou CPF (com ou sem pontuação)"
+            />
+          </div>
+          <div className="row gap-12" style={{ flexWrap: 'wrap' }}>
+            <div className="field-group" style={{ flex: '1 1 160px' }}>
+              <label className="field-label">De</label>
+              <input
+                className="input-field"
+                type="date"
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+              />
+            </div>
+            <div className="field-group" style={{ flex: '1 1 160px' }}>
+              <label className="field-label">Até</label>
+              <input
+                className="input-field"
+                type="date"
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+              />
+            </div>
+            {(filterText || filterFrom || filterTo) && (
+              <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 1 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { setFilterText(''); setFilterFrom(''); setFilterTo(''); }}
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
+          </div>
+          {(filterText || filterFrom || filterTo) && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              {filteredInvoices.length} de {invoices.length} nota{invoices.length !== 1 ? 's' : ''} encontrada{filteredInvoices.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+
         {invoices.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Nenhuma nota emitida ainda.</p>
+        ) : filteredInvoices.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Nenhuma nota encontrada para o filtro.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-table">
@@ -496,7 +577,7 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
+                {filteredInvoices.map((inv) => (
                   <InvoiceRow key={inv.id} inv={inv} />
                 ))}
               </tbody>
@@ -516,17 +597,7 @@ const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }>
   cancelada:  { label: 'Cancelada',  bg: '#fef3c7', color: '#92400e' },
 };
 
-function InvoiceRow({ inv }: { inv: {
-  id: string;
-  status: 'pendente' | 'autorizada' | 'erro' | 'cancelada';
-  numero: string | null;
-  valor: number;
-  pdfUrl: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  paymentId: string | null;
-  buyerName: string | null;
-} }) {
+function InvoiceRow({ inv }: { inv: InvoiceRow }) {
   const [isPending, startTransition] = useTransition();
   const badge = STATUS_BADGE[inv.status] ?? STATUS_BADGE.pendente;
 

@@ -1,10 +1,9 @@
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { settings, invoices, users } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { settings } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { getTenantId } from '@/lib/tenant';
 import SettingsClient from './settings-client';
-import { getFiscalConfigForUI } from '@/lib/fiscal-config';
 
 /** Chaves sensíveis: nunca enviadas ao navegador — só um indicador de "preenchido". */
 const SECRET_KEYS = ['asaas_api_key', 'asaas_webhook_secret', 'panda_api_key'] as const;
@@ -26,31 +25,6 @@ export default async function AdminSettingsPage() {
     process.env.BUNNY_API_KEY &&
     process.env.BUNNY_CDN_HOSTNAME
   );
-
-  const fiscalConfig = await getFiscalConfigForUI();
-
-  const tenantInvoices = await db
-    .select({
-      id: invoices.id,
-      status: invoices.status,
-      numero: invoices.numero,
-      valor: invoices.valor,
-      pdfUrl: invoices.pdfUrl,
-      errorMessage: invoices.errorMessage,
-      createdAt: invoices.createdAt,
-      paymentId: invoices.paymentId,
-      buyerName: users.name,
-    })
-    .from(invoices)
-    .leftJoin(users, eq(invoices.userId, users.id))
-    .where(eq(invoices.tenantId, tenantId))
-    .orderBy(desc(invoices.createdAt))
-    .limit(100);
-
-  const serializedInvoices = tenantInvoices.map((inv) => ({
-    ...inv,
-    createdAt: inv.createdAt.toISOString(),
-  }));
 
   // URL real do webhook Asaas — a mesma para todos os tenants.
   const host = (await headers()).get('host') ?? 'claudemembers.com.br';
@@ -75,8 +49,6 @@ export default async function AdminSettingsPage() {
         zapiToken: !!process.env.ZAPI_TOKEN,
         zapiClientToken: !!process.env.ZAPI_CLIENT_TOKEN,
       }}
-      fiscalConfig={fiscalConfig}
-      invoices={serializedInvoices}
     />
   );
 }
