@@ -2,7 +2,7 @@
 
 # Atlas Members — Estado do projeto
 
-Plataforma de área de membros (LMS + checkout) **multi-tenant** construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas), email transacional via **Brevo**, WhatsApp via **Z-API**, IA via **OpenAI** (`gpt-4o` / `gpt-4o-mini`).
+Plataforma de área de membros (LMS + checkout) **multi-tenant** construída com **Next.js 16 App Router**, **Drizzle ORM + Neon Postgres**, **NextAuth v5**, **Tailwind/CSS variables** e **Vercel Blob** para uploads. Integração de pagamento via **Asaas** (PIX, Boleto, Cartão com parcelamento, Assinaturas), email transacional via **Brevo**, WhatsApp via **Z-API**, IA via **OpenAI** (`gpt-4o` / `gpt-4o-mini`), e emissão de **NFS-e** pelo Sistema Nacional de Nota Fiscal (veja a seção **Nota Fiscal**).
 
 Cada tenant é uma área de membros completa e isolada, acessível por subdomínio (`slug.claudemembers.com.br`) ou domínio próprio. Veja a seção **Multi-tenant** abaixo.
 
@@ -24,7 +24,8 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 ## Estrutura
 
 - `app/(app)/` — rotas autenticadas do aluno (dashboard, catalog, courses, profile, progress, trails)
-- `app/admin/` — painel admin do tenant (cursos, alunos, turmas/cohorts, comentários, configurações, checkouts)
+- `app/admin/` — painel admin do tenant (cursos, alunos, turmas/cohorts, comentários, checkouts, **nota fiscal**, configurações). A navegação admin **não tem barra própria**: os itens vivem num card na sidebar principal (em `components/sidebar.tsx`, array `ADMIN_ITEMS`), visível para `role === 'admin'`
+- `app/admin/fiscal/` — página de Nota Fiscal: config fiscal + certificado + lista de notas emitidas (sub-abas "Configuração" / "Notas emitidas")
 - `app/super-admin/` — área da plataforma (acima dos tenants): `login`, `/` (CRUD de tenants), `account` (conta do super admin). Login próprio por cookie HMAC, separado do NextAuth
 - `app/checkout/[slug]/` — checkout público (sem auth) + página de sucesso com polling
 - `app/login | register | forgot-password | reset-password/[token]` — auth público; cada rota é `page.tsx` (server, busca brand) + `*-form.tsx` (client). Header de marca via `<AuthBrand />`
@@ -42,6 +43,9 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 - `lib/super-admin.ts` — sessão do super admin (cookie HMAC `sa_session`, TTL 7d); `getSuperAdmin()`, `requireSuperAdmin()`
 - `lib/super-admin-actions.ts` — login/logout do super admin, CRUD de tenants, conta do super admin
 - `lib/vercel-domains.ts` — `attachDomain()` / `detachDomain()`: registra domínios de tenant no projeto Vercel via API
+- `lib/nfse/` — núcleo de emissão de NFS-e (portado do app CODEX): `sign.ts` (assina XML-DSig com o PFX), `xml.ts` + `template.ts` (monta o XML da DPS), `client.ts` (cliente mTLS do Sistema Nacional), `event.ts` (XML de cancelamento), `cert-crypto.ts` (cifra/decifra o certificado, AES-256-GCM), `emit.ts` (`emitInvoiceForPayment`, `fetchAndStoreInvoicePdf`), `cancel.ts` (`cancelInvoiceForPayment`), `types.ts`
+- `lib/fiscal-config.ts` — `getFiscalConfigForUI()` (sem segredos), `getFiscalCompany()` (decifrado, para emitir)
+- `lib/fiscal-actions.ts` — server actions: salvar config, upload de certificado, emitir/cancelar/reenviar notas
 - `lib/asaas.ts` — client da API Asaas
 - `lib/brevo.ts` — `sendEmail()` (email transacional Brevo); aceita `from` opcional (remetente por tenant)
 - `lib/zapi.ts` — `sendWhatsApp()` (normaliza telefone BR, envia via Z-API)
@@ -69,6 +73,9 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 - `comments` — `parentId` (auto-ref, sem FK) para threading + `imageUrl` para anexos
 - `cohorts`, `cohort_courses`, `cohort_members` — turmas
 - `notes` — `notes.timestamp` guarda o tempo do vídeo em segundos (string); clicável p/ pular no player BunnyNet
+- `fiscal_config` — uma linha por tenant: dados fiscais do emitente (CNPJ, IM, endereço, regime tributário, códigos de tributação, série) + `enabled`, `tpAmb` (`2` homologação / `1` produção) + certificado (`pfxData`/`pfxPassword` cifrados, `certSubject`, `certValidoAte`)
+- `invoices` — notas emitidas: `paymentId`, `userId`, `status` (`pendente`/`autorizada`/`erro`/`cancelada`), `chaveAcesso`, `dpsXml`/`nfseXml`, `pdfUrl` (Blob), `notifiedAt` (e-mail/WhatsApp já enviados)
+- `users` tem endereço estruturado (`addrLogradouro`, `addrNumero`, `addrComplemento`, `addrBairro`, `addrCidade`, `addrUf`, `addrCep`) — obrigatório no checkout, usado como tomador na NFS-e
 - `settings` — key/value, **PK composta `(tenant_id, key)`**: `panda_api_key`, `panda_player_id`, `asaas_api_key`, `asaas_env`, `asaas_webhook_secret`, `brand_name`, `brand_logo`, `brand_logo_dark` (logo para tema escuro), `brand_favicon`, `brand_color`, `brand_footer`, `brand_logo_only` (`'1'` = só logo, sem nome), `lgpd_terms` (texto LGPD editável)
 
 ## Convenções
@@ -106,6 +113,8 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 - **`outputFileTracingIncludes` (next.config.ts)**: a chave é um glob — NÃO use `[lessonId]` (colchetes viram classe de caractere). Use `/api/**`. É o que empacota o binário do `ffmpeg-static` na função de transcrição.
 - **Favicon**: NÃO criar `app/favicon.ico` — o Next serve esse arquivo automaticamente e ele sobrepõe o favicon da marca (`generateMetadata` → `icons`).
 - **Notificações com `await`**: nunca fire-and-forget — a Vercel encerra a function e o fetch é cortado (`SocketError: other side closed`).
+- **DANFSE (PDF da NFS-e)**: o endpoint do governo demora a disponibilizar o PDF — logo após autorizar, baixar quase sempre falha. Não é bug; o PDF é re-tentável (espere ~1h). A nota fica `autorizada` mesmo sem PDF (o XML é o documento legal).
+- **Vercel Blob `put`**: precisa de `allowOverwrite: true` ao re-gravar um arquivo no mesmo caminho, senão lança "blob already exists" (quebrava o retry do PDF).
 
 ## Integrações externas (env vars)
 
@@ -142,12 +151,25 @@ Arquitetura: **banco compartilhado + `tenant_id`**. Cada tenant é uma área de 
 - **SSL de domínio de tenant pode travar**: se `https://...` não subir após o DNS propagar, force com `vercel certs issue <domínio>`.
 - **`db:push` é interativo** e pode pedir confirmação destrutiva — para mudanças de constraint, aplicar o DDL direto via `psql` é mais seguro.
 
+## Nota Fiscal (NFS-e)
+
+Emissão de NFS-e direto pelo **Sistema Nacional de NFS-e** (SEFIN Nacional / ADN gov.br) — núcleo portado do app CODEX da usuária. NÃO usa a Asaas para nota fiscal.
+
+- **Como funciona**: monta o XML da DPS (`lib/nfse/xml.ts`) → assina com o certificado digital (XML-DSig, `lib/nfse/sign.ts`) → envia via **mTLS** ao governo (`lib/nfse/client.ts`, o certificado é a identidade TLS) → recebe a `chaveAcesso`. Cancelamento é um evento XML (tipo 101101).
+- **Config por tenant** (`fiscal_config`): cada tenant emite com o próprio CNPJ + certificado. O certificado `.pfx` + senha são guardados **cifrados** no banco (AES-256-GCM com chave derivada do `AUTH_SECRET` — `lib/nfse/cert-crypto.ts`); nunca vão ao navegador. Upload via `POST /api/admin/fiscal/certificate`.
+- **Ambiente**: `tpAmb` `2` = homologação (produção restrita), `1` = produção. Padrão homologação até o contador validar os códigos de tributação.
+- **Emissão**: automática no pagamento confirmado (webhook Asaas + checkout) e manual (botão no detalhe do aluno). `emitInvoiceForPayment` é idempotente e nunca lança — falha vira `invoice` status `erro`.
+- **PDF (DANFSE)**: baixado do endpoint do governo (`baixarDanfse`) e guardado no Blob. O governo demora a gerar o DANFSE — na emissão quase nunca está pronto; o painel tem retry.
+- **Envio ao comprador**: **manual** — a emissão NÃO dispara e-mail/WhatsApp. No painel (`/admin/fiscal` → Notas emitidas) há "Enviar notas pendentes" (dispara as não-notificadas que já têm PDF) e "Reenviar selecionadas" (checkbox por nota, força reenvio). `notifiedAt` marca as já enviadas.
+- **Telas**: `/admin/fiscal` (config + lista com filtros de período e nome/CPF); notas também aparecem no detalhe do aluno.
+- **Setup atual**: a empresa **3S Contabilidade** já está configurada nos dois tenants (CNPJ, certificado válido até 03/2027), mas com `enabled = false` — emissão desligada até a usuária ativar no painel.
+
 ## Pendências conhecidas
 
 - Public checkout permite paste de imagem em comentários mas não há moderação automática.
 - `coverImage` no editor admin aceita upload mas a tabela `cohorts`/`trails` ainda não tem imagem.
 - Cartão de crédito vai como string no payload da Asaas — pra produção, considerar tokenização (PCI).
 - Texto dos termos LGPD é editável em Configurações → LGPD (`settings.lgpd_terms`); o padrão está em `lib/lgpd-default.ts` — revisar com jurídico antes de produção.
-- Endereço do CEP é exibido pro cliente conferir, mas só o `postalCode` é enviado ao Asaas.
 - Transcrição: vídeos muito longos podem estourar 25 MB mesmo só com áudio — particionamento automático não implementado.
+- NFS-e: o envio do e-mail/WhatsApp da nota é manual (botão no painel) — não há agendador automático. Os códigos de tributação da `fiscal_config` precisam de validação contábil antes de virar o ambiente para produção.
 - Multi-tenant: emissão de SSL de domínio de tenant não é automatizada (rodar `vercel certs issue` se travar). Brevo/Z-API são globais — envio do domínio próprio de cada tenant exigiria autenticar o domínio do tenant no Brevo.
