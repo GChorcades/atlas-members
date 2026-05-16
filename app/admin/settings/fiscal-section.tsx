@@ -137,6 +137,9 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
     });
   }
 
+  // ── sub-tab state ────────────────────────────────────────────────────────
+  const [subTab, setSubTab] = useState<'config' | 'notas'>('config');
+
   // ── certificate upload state ─────────────────────────────────────────────
   const [certFile, setCertFile] = useState<File | null>(null);
   const [certPassword, setCertPassword] = useState('');
@@ -169,6 +172,17 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
 
   return (
     <div className="col gap-20">
+      {/* ── Sub-abas ────────────────────────────────────────────────────── */}
+      <div className="tabs">
+        <button className="tab" data-active={subTab === 'config'} onClick={() => setSubTab('config')}>
+          Configuração
+        </button>
+        <button className="tab" data-active={subTab === 'notas'} onClick={() => setSubTab('notas')}>
+          Notas emitidas ({invoices.length})
+        </button>
+      </div>
+
+      {subTab === 'config' && (<>
       {/* ── Configuração fiscal ─────────────────────────────────────────── */}
       <SectionCard
         title="Configuração fiscal"
@@ -458,6 +472,9 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
         </div>
       </SectionCard>
 
+      </>)}
+
+      {subTab === 'notas' && (<>
       {/* ── Notas emitidas ──────────────────────────────────────────────── */}
       <SectionCard
         title="Notas emitidas"
@@ -487,6 +504,7 @@ export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: Fiscal
           </div>
         )}
       </SectionCard>
+      </>)}
     </div>
   );
 }
