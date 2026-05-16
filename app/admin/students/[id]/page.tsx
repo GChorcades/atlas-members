@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/components/icons';
@@ -16,6 +16,7 @@ import {
   adminCancelAsaasSubscription,
   adminDeleteAsaasPayment,
 } from '@/lib/actions';
+import { emitInvoiceManual } from '@/lib/fiscal-actions';
 import ChargeModal from './charge-modal';
 import SubscriptionModal from './subscription-modal';
 import PasswordModal from './password-modal';
@@ -521,6 +522,44 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
+// ─── Emitir nota fiscal ─────────────────────────────────────────────
+
+function EmitInvoiceButton({ paymentId }: { paymentId: string }) {
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<'ok' | 'fail' | null>(null);
+
+  function handleClick() {
+    setResult(null);
+    startTransition(async () => {
+      try {
+        const res = await emitInvoiceManual(paymentId);
+        setResult(res.ok ? 'ok' : 'fail');
+      } catch {
+        setResult('fail');
+      }
+    });
+  }
+
+  if (result === 'ok') {
+    return <span style={{ fontSize: 11, color: '#166534', whiteSpace: 'nowrap' }}>✓ Nota emitida</span>;
+  }
+
+  if (result === 'fail') {
+    return <span style={{ fontSize: 11, color: '#991b1b', whiteSpace: 'nowrap' }}>Falha ao emitir</span>;
+  }
+
+  return (
+    <button
+      className="btn btn-ghost btn-sm"
+      style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+      disabled={isPending}
+      onClick={handleClick}
+    >
+      {isPending ? 'Emitindo…' : 'Emitir nota fiscal'}
+    </button>
+  );
+}
+
 // ─── Cursos inscritos ───────────────────────────────────────────────
 
 function CoursesSection({
@@ -764,7 +803,7 @@ function PaymentsSection({
                 <th>Método</th>
                 <th>Vencimento</th>
                 <th>Status</th>
-                <th style={{ width: 70 }}></th>
+                <th style={{ width: 160 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -789,7 +828,10 @@ function PaymentsSection({
                       </span>
                     </td>
                     <td>
-                      <div className="row gap-2">
+                      <div className="row gap-2" style={{ alignItems: 'center' }}>
+                        {(p.status === 'received' || p.status === 'confirmed') && (
+                          <EmitInvoiceButton paymentId={p.id} />
+                        )}
                         {p.invoiceUrl && (
                           <a className="icon-btn" href={p.invoiceUrl} target="_blank" rel="noopener" title="Ver fatura no Asaas">
                             <Icon name="eye" size={13} />

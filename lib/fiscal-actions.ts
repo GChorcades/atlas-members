@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { fiscalConfig } from '@/db/schema';
 import { getTenantId } from '@/lib/tenant';
 import { revalidatePath } from 'next/cache';
+import { emitInvoiceForPayment } from '@/lib/nfse/emit';
 
 async function assertAdmin() {
   const session = await auth();
@@ -24,4 +25,11 @@ export async function saveFiscalConfig(data: FiscalConfigInput) {
     .onConflictDoUpdate({ target: fiscalConfig.tenantId, set: { ...safe, updatedAt: new Date() } });
   revalidatePath('/admin/settings');
   return { ok: true as const };
+}
+
+export async function emitInvoiceManual(paymentId: string) {
+  await assertAdmin();
+  const result = await emitInvoiceForPayment(paymentId);
+  revalidatePath('/admin/students');
+  return result;
 }
