@@ -121,6 +121,28 @@ export async function notifyPaymentConfirmed(
   return dispatch(user, title, html, wa, ctx.sender);
 }
 
+export async function notifyInvoice(
+  user: User,
+  args: { pdfUrl: string; numero?: string | null },
+) {
+  const ctx = await getTenantEmail();
+  const title = 'Sua nota fiscal foi emitida';
+  const numeroLinha = args.numero ? `<p>Nota fiscal nº <strong>${args.numero}</strong>.</p>` : '';
+  const html = baseLayout(
+    ctx.appName,
+    title,
+    `<p>Olá, <strong>${user.name}</strong>!</p>
+     <p>A nota fiscal de serviço referente à sua compra foi emitida.</p>
+     ${numeroLinha}
+     <p style="margin:20px 0;">
+       <a href="${args.pdfUrl}" style="display:inline-block;background:#1a1a1a;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Baixar nota fiscal (PDF)</a>
+     </p>
+     <p style="font-size:13px;color:#666;">Guarde este documento. Em caso de dúvida, responda este e-mail.</p>`,
+  );
+  const wa = `Olá, ${user.name}! Sua nota fiscal${args.numero ? ` (nº ${args.numero})` : ''} da ${ctx.appName} foi emitida.\n\nBaixe o PDF: ${args.pdfUrl}`;
+  return dispatch(user, title, html, wa, ctx.sender);
+}
+
 async function dispatch(
   user: User,
   subject: string,

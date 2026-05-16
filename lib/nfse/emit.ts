@@ -7,6 +7,7 @@ import { loadPfxFromBuffer, signXml, ensureCertificateMatchesCompany } from '@/l
 import { buildXml } from '@/lib/nfse/xml';
 import { enviarDps, baixarXmlNfse, extractXmlFromResponse, baixarDanfse } from '@/lib/nfse/client';
 import { put } from '@vercel/blob';
+import { notifyInvoice } from '@/lib/notifications';
 
 /**
  * Emite a NFS-e de um pagamento. Idempotente: se já existe invoice
@@ -88,6 +89,15 @@ export async function fetchAndStoreInvoicePdf(invoiceId: string): Promise<string
       access: 'public', contentType: 'application/pdf',
     });
     await db.update(invoices).set({ pdfUrl: blob.url }).where(eq(invoices.id, inv.id));
+    try {
+      const [buyer] = await db.select().from(users).where(eq(users.id, inv.userId)).limit(1);
+      if (buyer) {
+        await notifyInvoice(
+          { name: buyer.name, email: buyer.email, phone: buyer.phone },
+          { pdfUrl: blob.url, numero: inv.numero },
+        );
+      }
+    } catch { /* envio não bloqueia */ }
     return blob.url;
   } catch {
     return null; // DANFSE instável — re-tentável pelo painel
