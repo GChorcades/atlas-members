@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { fiscalConfig } from '@/db/schema';
 import { getTenantId } from '@/lib/tenant';
 import { revalidatePath } from 'next/cache';
-import { emitInvoiceForPayment } from '@/lib/nfse/emit';
+import { emitInvoiceForPayment, fetchAndStoreInvoicePdf } from '@/lib/nfse/emit';
 
 async function assertAdmin() {
   const session = await auth();
@@ -32,4 +32,12 @@ export async function emitInvoiceManual(paymentId: string) {
   const result = await emitInvoiceForPayment(paymentId);
   revalidatePath('/admin/students');
   return result;
+}
+
+export async function retryInvoicePdf(invoiceId: string) {
+  await assertAdmin();
+  const url = await fetchAndStoreInvoicePdf(invoiceId);
+  revalidatePath('/admin/settings');
+  revalidatePath('/admin/students');
+  return { ok: !!url, url };
 }

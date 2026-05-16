@@ -5,7 +5,8 @@ import { invoices, payments, users } from '@/db/schema';
 import { getFiscalCompany } from '@/lib/fiscal-config';
 import { loadPfxFromBuffer, signXml, ensureCertificateMatchesCompany } from '@/lib/nfse/sign';
 import { buildXml } from '@/lib/nfse/xml';
-import { enviarDps, baixarXmlNfse, extractXmlFromResponse } from '@/lib/nfse/client';
+import { enviarDps, baixarXmlNfse, extractXmlFromResponse, baixarDanfse } from '@/lib/nfse/client';
+import { put } from '@vercel/blob';
 
 /**
  * Emite a NFS-e de um pagamento. Idempotente: se já existe invoice
@@ -60,6 +61,9 @@ export async function emitInvoiceForPayment(paymentId: string): Promise<{ ok: bo
     };
     await db.insert(invoices).values(row)
       .onConflictDoUpdate({ target: invoices.id, set: row });
+    if (chave) {
+      await fetchAndStoreInvoicePdf(invoiceId).catch(() => {});
+    }
     return { ok: !!chave, invoiceId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -70,5 +74,22 @@ export async function emitInvoiceForPayment(paymentId: string): Promise<{ ok: bo
     await db.insert(invoices).values(row)
       .onConflictDoUpdate({ target: invoices.id, set: { status: 'erro', errorMessage: msg } });
     return { ok: false, invoiceId };
+  }
+}
+
+/** Baixa o DANFSE do governo e guarda no Blob. Retorna a URL ou null. */
+export async function fetchAndStoreInvoicePdf(invoiceId: string): Promise<string | null> {
+  const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  if (!inv || !inv.chaveAcesso || inv.status !== 'autorizada') return null;
+  try {
+    const company = await getFiscalCompany(inv.tenantId);
+    const pdf = await baixarDanfse(inv.chaveAcesso, company);
+    const blob = await put(`nfse/${inv.chaveAcesso}.pdf`, pdf, {
+      access: 'public', contentType: 'application/pdf',
+    });
+    await db.update(invoices).set({ pdfUrl: blob.url }).where(eq(invoices.id, inv.id));
+    return blob.url;
+  } catch {
+    return null; // DANFSE instável — re-tentável pelo painel
   }
 }
