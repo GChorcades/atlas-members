@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Icon } from '@/components/icons';
 import { saveSettings } from '@/lib/actions';
 import { DEFAULT_LGPD_TERMS } from '@/lib/lgpd-default';
+import { FiscalSection } from './fiscal-section';
+import type { getFiscalConfigForUI } from '@/lib/fiscal-config';
 
 type Props = {
   initial: Record<string, string>;
@@ -18,6 +20,7 @@ type Props = {
     zapiToken: boolean;
     zapiClientToken: boolean;
   };
+  fiscalConfig: Awaited<ReturnType<typeof getFiscalConfigForUI>>;
 };
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -45,8 +48,8 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
   );
 }
 
-export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyEnv, messagingEnv }: Props) {
-  const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd'>('brand');
+export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyEnv, messagingEnv, fiscalConfig }: Props) {
+  const [tab, setTab] = useState<'brand' | 'players' | 'payment' | 'messaging' | 'lgpd' | 'fiscal'>('brand');
   const [zapiCheck, setZapiCheck] = useState<{ loading: boolean; connected?: boolean; error?: string }>({ loading: false });
 
   async function checkZapi() {
@@ -170,6 +173,9 @@ export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyE
         </button>
         <button className="tab" data-active={tab === 'lgpd'} onClick={() => setTab('lgpd')}>
           <Icon name="file" size={14} /> LGPD
+        </button>
+        <button className="tab" data-active={tab === 'fiscal'} onClick={() => setTab('fiscal')}>
+          <Icon name="file" size={14} /> Nota Fiscal
         </button>
       </div>
 
@@ -676,6 +682,9 @@ export default function SettingsClient({ initial, secretsSet, webhookUrl, bunnyE
           </SectionCard>
         </div>
       )}
+
+      {/* ─── NOTA FISCAL ────────────────────────────────── */}
+      {tab === 'fiscal' && <FiscalSection fiscalConfig={fiscalConfig} />}
 
       {/* ─── LGPD ───────────────────────────────────────── */}
       {tab === 'lgpd' && (
