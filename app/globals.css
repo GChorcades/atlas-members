@@ -5,9 +5,9 @@
   --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: 'Instrument Serif', 'Geist', serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --bg: #fafaf9;
+  --bg: #ececed;
   --bg-elevated: #ffffff;
-  --bg-muted: #f4f4f5;
+  --bg-muted: #e4e4e7;
   --bg-hover: rgba(0, 0, 0, 0.035);
   --bg-active: rgba(0, 0, 0, 0.06);
   --border: rgba(24, 24, 27, 0.08);
