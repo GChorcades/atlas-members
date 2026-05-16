@@ -17,13 +17,14 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 
 ## Comandos
 
-- `npm run dev` — Next dev em :3001
+- `npm run dev` — Next dev (porta 3000 por padrão; o `dev:tunnel` espera :3001 — rode com `PORT=3001 npm run dev` para casar com o túnel)
 - `npm run dev:tunnel` — dev + cloudflared (para testar webhook Asaas localmente)
 - `npm run test:webhook PAYMENT_RECEIVED email valor` — simula evento Asaas com `x-test-mode: 1`
 - `npm run db:push` ou `npx drizzle-kit push --force` — aplica schema no Neon (sempre depois de mexer em `db/schema.ts`)
 - `npx tsx db/seed.ts` — popular dados base
 - `npx tsx db/seed-vibe-coding.ts` — curso de demonstração ("Vibe Coding 101", idempotente)
 - `npx tsx scripts/reset-student-passwords.ts` — reset em massa de senhas de alunos para `123321`
+- `npx tsx scripts/test-nfse-xml.ts` / `npx tsx scripts/test-cert-crypto.ts` — testes manuais de XML da NFS-e e da cifra do certificado
 - `npm run db:seed-super-admin -- <email> <senha> "<Nome>"` — cria/atualiza um super admin da plataforma
 - Scripts que leem o DB direto: `dotenv` carrega `.env`, mas a conexão está em `.env.local` — rode com `export DATABASE_URL="$(grep ^DATABASE_URL= .env.local | cut -d= -f2-)"` antes
 - Deploy: **não é automático** no push. Use `vercel --prod --yes` (CLI já logada)
@@ -90,7 +91,7 @@ Cada tenant é uma área de membros completa e isolada, acessível por subdomín
 - **Tema**: `data-theme="dark"|"light"` no `<html>`. Bootstrap inline script no `app/layout.tsx` aplica antes da hidratação a partir de `localStorage('atlas-theme')` ou `prefers-color-scheme`. Toggle no `Topbar`.
 - **Brand**: `getBrand()` é chamado em `app/layout.tsx`, `(app)/layout.tsx` e `admin/layout.tsx`. Cor customizada sobrescreve `--accent`, `--accent-fg: #fff`, `--accent-soft` (color-mix). Logo aparece no sidebar; favicon via `generateMetadata`; footer pelo `AppShell`. Logo tem variante para tema escuro (`brand_logo_dark`): sidebar e telas de auth renderizam as duas e o CSS mostra a certa via classes `.brand-logo-light`/`.brand-logo-dark` + `[data-theme]`.
 - **Multi-tenant**: o tenant é resolvido pelo `Host` (`lib/tenant.ts`). Toda query é escopada por `tenant_id`. `auth.ts` usa `trustHost: true` (sem `NEXTAUTH_URL` fixo) e autentica por `(tenant, email)`; a sessão carrega `tenantId`. `proxy.ts` deixa `/super-admin` passar (tem auth própria).
-- **Senha padrão de alunos**: `123321` (definida em `lib/actions.ts` constante `DEFAULT_STUDENT_PASSWORD` para o checkout público).
+- **Senha padrão de alunos**: `123321` (constante `DEFAULT_STUDENT_PASSWORD` em `lib/actions.ts`, usada no checkout público). **Manter sempre esse valor** — é a senha padrão oficial do projeto; não trocar sem pedido explícito da usuária.
 - **Upload**: `POST /api/upload` (admin-only) aceita imagens até 5MB e retorna URL do Vercel Blob.
 - **Webhook Asaas**: header `asaas-access-token` validado contra `asaas_webhook_secret`. `x-test-mode: 1` só funciona quando `NODE_ENV !== 'production'`. Auto-matricula no curso quando `payment.courseId` está setado e evento é `RECEIVED`/`CONFIRMED`.
 - **Polling de pagamento**: `/api/checkout/payment-status?id=` consulta Asaas direto se webhook atrasar — atualiza DB e matricula como fallback.

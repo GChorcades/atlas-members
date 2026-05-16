@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# serena (memórias locais do MCP, não versionar)
+/.serena
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
