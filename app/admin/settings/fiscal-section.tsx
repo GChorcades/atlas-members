@@ -2,10 +2,22 @@
 
 import { useState, useTransition } from 'react';
 import { Icon } from '@/components/icons';
-import { saveFiscalConfig } from '@/lib/fiscal-actions';
+import { saveFiscalConfig, retryInvoicePdf, cancelInvoiceManual } from '@/lib/fiscal-actions';
 import type { getFiscalConfigForUI } from '@/lib/fiscal-config';
 
 type FiscalConfigUI = Awaited<ReturnType<typeof getFiscalConfigForUI>>;
+
+type InvoiceRow = {
+  id: string;
+  status: 'pendente' | 'autorizada' | 'erro' | 'cancelada';
+  numero: string | null;
+  valor: number;
+  pdfUrl: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  paymentId: string | null;
+  buyerName: string | null;
+};
 
 function SectionCard({ title, subtitle, icon, children }: { title: string; subtitle: string; icon: string; children: React.ReactNode }) {
   return (
@@ -32,7 +44,7 @@ function SubHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function FiscalSection({ fiscalConfig }: { fiscalConfig: FiscalConfigUI }) {
+export function FiscalSection({ fiscalConfig, invoices }: { fiscalConfig: FiscalConfigUI; invoices: InvoiceRow[] }) {
   const cfg = fiscalConfig;
 
   // ── form state ──────────────────────────────────────────────────────────
@@ -445,6 +457,131 @@ export function FiscalSection({ fiscalConfig }: { fiscalConfig: FiscalConfigUI }
           </p>
         </div>
       </SectionCard>
+
+      {/* ── Notas emitidas ──────────────────────────────────────────────── */}
+      <SectionCard
+        title="Notas emitidas"
+        subtitle="Histórico de NFS-e emitidas pela plataforma."
+        icon="file"
+      >
+        {invoices.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Nenhuma nota emitida ainda.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Comprador</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th style={{ width: 200 }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <InvoiceRow key={inv.id} inv={inv} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
     </div>
+  );
+}
+
+const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  autorizada: { label: 'Autorizada', bg: '#dcfce7', color: '#166534' },
+  pendente:   { label: 'Pendente',   bg: 'var(--bg-muted)', color: 'var(--text-muted)' },
+  erro:       { label: 'Erro',       bg: '#fee2e2', color: '#991b1b' },
+  cancelada:  { label: 'Cancelada',  bg: '#fef3c7', color: '#92400e' },
+};
+
+function InvoiceRow({ inv }: { inv: {
+  id: string;
+  status: 'pendente' | 'autorizada' | 'erro' | 'cancelada';
+  numero: string | null;
+  valor: number;
+  pdfUrl: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  paymentId: string | null;
+  buyerName: string | null;
+} }) {
+  const [isPending, startTransition] = useTransition();
+  const badge = STATUS_BADGE[inv.status] ?? STATUS_BADGE.pendente;
+
+  function handleRetryPdf() {
+    startTransition(async () => {
+      await retryInvoicePdf(inv.id);
+    });
+  }
+
+  function handleCancel() {
+    const motivo = window.prompt('Motivo do cancelamento:');
+    if (motivo === null) return; // cancelou o prompt
+    startTransition(async () => {
+      await cancelInvoiceManual(inv.id, motivo || 'Cancelamento manual');
+    });
+  }
+
+  return (
+    <tr>
+      <td className="muted mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        {new Date(inv.createdAt).toLocaleDateString('pt-BR')}
+      </td>
+      <td style={{ fontSize: 13 }}>{inv.buyerName ?? '—'}</td>
+      <td className="mono" style={{ fontSize: 13 }}>
+        {inv.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+      <td>
+        <span
+          className="chip"
+          style={{ fontSize: 11, background: badge.bg, color: badge.color, textDecoration: inv.status === 'cancelada' ? 'line-through' : undefined }}
+        >
+          {badge.label}
+        </span>
+        {inv.status === 'erro' && inv.errorMessage && (
+          <p className="muted" style={{ fontSize: 11, marginTop: 2, maxWidth: 220 }} title={inv.errorMessage}>
+            {inv.errorMessage.slice(0, 60)}{inv.errorMessage.length > 60 ? '…' : ''}
+          </p>
+        )}
+      </td>
+      <td>
+        <div className="row gap-4" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {inv.pdfUrl ? (
+            <a
+              className="btn btn-ghost btn-sm"
+              href={inv.pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 11 }}
+            >
+              Baixar PDF
+            </a>
+          ) : inv.status === 'autorizada' ? (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11 }}
+              disabled={isPending}
+              onClick={handleRetryPdf}
+            >
+              {isPending ? 'Buscando…' : 'Baixar PDF'}
+            </button>
+          ) : null}
+          {inv.status === 'autorizada' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11, color: 'var(--danger)' }}
+              disabled={isPending}
+              onClick={handleCancel}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }

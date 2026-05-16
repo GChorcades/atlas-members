@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { settings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { settings, invoices, users } from '@/db/schema';
+import { eq, desc } from 'drizzle-orm';
 import { getTenantId } from '@/lib/tenant';
 import SettingsClient from './settings-client';
 import { getFiscalConfigForUI } from '@/lib/fiscal-config';
@@ -29,6 +29,29 @@ export default async function AdminSettingsPage() {
 
   const fiscalConfig = await getFiscalConfigForUI();
 
+  const tenantInvoices = await db
+    .select({
+      id: invoices.id,
+      status: invoices.status,
+      numero: invoices.numero,
+      valor: invoices.valor,
+      pdfUrl: invoices.pdfUrl,
+      errorMessage: invoices.errorMessage,
+      createdAt: invoices.createdAt,
+      paymentId: invoices.paymentId,
+      buyerName: users.name,
+    })
+    .from(invoices)
+    .leftJoin(users, eq(invoices.userId, users.id))
+    .where(eq(invoices.tenantId, tenantId))
+    .orderBy(desc(invoices.createdAt))
+    .limit(100);
+
+  const serializedInvoices = tenantInvoices.map((inv) => ({
+    ...inv,
+    createdAt: inv.createdAt.toISOString(),
+  }));
+
   // URL real do webhook Asaas — a mesma para todos os tenants.
   const host = (await headers()).get('host') ?? 'claudemembers.com.br';
   const proto = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
@@ -53,6 +76,7 @@ export default async function AdminSettingsPage() {
         zapiClientToken: !!process.env.ZAPI_CLIENT_TOKEN,
       }}
       fiscalConfig={fiscalConfig}
+      invoices={serializedInvoices}
     />
   );
 }

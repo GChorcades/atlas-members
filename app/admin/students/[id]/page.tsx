@@ -16,7 +16,7 @@ import {
   adminCancelAsaasSubscription,
   adminDeleteAsaasPayment,
 } from '@/lib/actions';
-import { emitInvoiceManual } from '@/lib/fiscal-actions';
+import { emitInvoiceManual, retryInvoicePdf, cancelInvoiceManual } from '@/lib/fiscal-actions';
 import ChargeModal from './charge-modal';
 import SubscriptionModal from './subscription-modal';
 import PasswordModal from './password-modal';
@@ -68,6 +68,17 @@ type Subscription = {
   cancelledAt: string | null;
 };
 
+type InvoiceItem = {
+  id: string;
+  status: 'pendente' | 'autorizada' | 'erro' | 'cancelada';
+  numero: string | null;
+  valor: number;
+  pdfUrl: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  paymentId: string | null;
+};
+
 type StudentData = {
   user: {
     id: string; name: string; email: string; role: string; plan: string;
@@ -87,6 +98,7 @@ type StudentData = {
   availableCourses: { id: string; title: string; published: boolean; coverBg: string | null; coverImage: string | null; coverGlyph: string | null }[];
   payments: Payment[];
   subscriptions: Subscription[];
+  invoices: InvoiceItem[];
 };
 
 const PLAN_LABEL: Record<string, string> = { free: 'Gratuito', monthly: 'Mensal', annual: 'Anual', lifetime: 'Vitalício' };
@@ -138,7 +150,7 @@ export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [data, setData] = useState<StudentData | null>(null);
-  const [tab, setTab] = useState<'courses' | 'payments' | 'personal'>('courses');
+  const [tab, setTab] = useState<'courses' | 'payments' | 'personal' | 'invoices'>('courses');
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [showCharge, setShowCharge] = useState(false);
   const [showSub, setShowSub] = useState(false);
@@ -208,7 +220,7 @@ export default function StudentDetailPage() {
 
   if (!data) return <DetailSkeleton />;
 
-  const { user, stats, cohorts, enrollments, availableCourses, payments, subscriptions } = data;
+  const { user, stats, cohorts, enrollments, availableCourses, payments, subscriptions, invoices } = data;
   const suspended = user.suspended;
   const status = suspended ? 'Suspenso' : 'Ativo';
   const statusColor = suspended ? '#ef4444' : '#22c55e';
@@ -323,6 +335,9 @@ export default function StudentDetailPage() {
         <button type="button" className="tab" data-active={tab === 'payments'} onClick={() => setTab('payments')}>
           Pagamentos ({payments.length})
         </button>
+        <button type="button" className="tab" data-active={tab === 'invoices'} onClick={() => setTab('invoices')}>
+          Notas fiscais ({invoices.length})
+        </button>
         <button type="button" className="tab" data-active={tab === 'personal'} onClick={() => setTab('personal')}>
           Dados pessoais
         </button>
@@ -361,6 +376,10 @@ export default function StudentDetailPage() {
             refresh();
           }}
         />
+      )}
+
+      {tab === 'invoices' && (
+        <InvoicesSection invoices={invoices} onRefresh={refresh} />
       )}
 
       {tab === 'personal' && (
@@ -557,6 +576,128 @@ function EmitInvoiceButton({ paymentId }: { paymentId: string }) {
     >
       {isPending ? 'Emitindo…' : 'Emitir nota fiscal'}
     </button>
+  );
+}
+
+// ─── Notas fiscais ──────────────────────────────────────────────────
+
+const INVOICE_STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  autorizada: { label: 'Autorizada', bg: '#dcfce7', color: '#166534' },
+  pendente:   { label: 'Pendente',   bg: 'var(--bg-muted)', color: 'var(--text-muted)' },
+  erro:       { label: 'Erro',       bg: '#fee2e2', color: '#991b1b' },
+  cancelada:  { label: 'Cancelada',  bg: '#fef3c7', color: '#92400e' },
+};
+
+function StudentInvoiceRow({ inv, onRefresh }: { inv: InvoiceItem; onRefresh: () => void }) {
+  const [isPending, startTransition] = useTransition();
+  const badge = INVOICE_STATUS_BADGE[inv.status] ?? INVOICE_STATUS_BADGE.pendente;
+
+  function handleRetryPdf() {
+    startTransition(async () => {
+      await retryInvoicePdf(inv.id);
+      onRefresh();
+    });
+  }
+
+  function handleCancel() {
+    const motivo = window.prompt('Motivo do cancelamento:');
+    if (motivo === null) return;
+    startTransition(async () => {
+      await cancelInvoiceManual(inv.id, motivo || 'Cancelamento manual');
+      onRefresh();
+    });
+  }
+
+  return (
+    <tr>
+      <td className="muted mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        {new Date(inv.createdAt).toLocaleDateString('pt-BR')}
+      </td>
+      <td className="mono" style={{ fontSize: 13 }}>
+        {inv.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </td>
+      <td>
+        <span
+          className="chip"
+          style={{ fontSize: 11, background: badge.bg, color: badge.color, textDecoration: inv.status === 'cancelada' ? 'line-through' : undefined }}
+        >
+          {badge.label}
+        </span>
+        {inv.status === 'erro' && inv.errorMessage && (
+          <p className="muted" style={{ fontSize: 11, marginTop: 2, maxWidth: 220 }} title={inv.errorMessage}>
+            {inv.errorMessage.slice(0, 60)}{inv.errorMessage.length > 60 ? '…' : ''}
+          </p>
+        )}
+      </td>
+      <td>
+        <div className="row gap-4" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {inv.pdfUrl ? (
+            <a
+              className="btn btn-ghost btn-sm"
+              href={inv.pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+            >
+              Baixar PDF
+            </a>
+          ) : inv.status === 'autorizada' ? (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+              disabled={isPending}
+              onClick={handleRetryPdf}
+            >
+              {isPending ? 'Buscando…' : 'Baixar PDF'}
+            </button>
+          ) : null}
+          {inv.status === 'autorizada' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11, color: 'var(--danger)', whiteSpace: 'nowrap' }}
+              disabled={isPending}
+              onClick={handleCancel}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function InvoicesSection({ invoices, onRefresh }: { invoices: InvoiceItem[]; onRefresh: () => void }) {
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14, alignItems: 'center' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>Notas fiscais</h2>
+      </div>
+      <div className="card-flat">
+        {invoices.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <Icon name="file" size={32} style={{ color: 'var(--text-faint)', margin: '0 auto 12px' }} />
+            <p className="muted" style={{ fontSize: 13 }}>Nenhuma nota emitida ainda.</p>
+          </div>
+        ) : (
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th style={{ width: 180 }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((inv) => (
+                <StudentInvoiceRow key={inv.id} inv={inv} onRefresh={onRefresh} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
 

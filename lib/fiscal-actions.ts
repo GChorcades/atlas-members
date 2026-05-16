@@ -2,10 +2,12 @@
 
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { fiscalConfig } from '@/db/schema';
+import { fiscalConfig, invoices } from '@/db/schema';
 import { getTenantId } from '@/lib/tenant';
 import { revalidatePath } from 'next/cache';
 import { emitInvoiceForPayment, fetchAndStoreInvoicePdf } from '@/lib/nfse/emit';
+import { cancelInvoiceForPayment } from '@/lib/nfse/cancel';
+import { eq } from 'drizzle-orm';
 
 async function assertAdmin() {
   const session = await auth();
@@ -40,4 +42,14 @@ export async function retryInvoicePdf(invoiceId: string) {
   revalidatePath('/admin/settings');
   revalidatePath('/admin/students');
   return { ok: !!url, url };
+}
+
+export async function cancelInvoiceManual(invoiceId: string, motivo: string) {
+  await assertAdmin();
+  const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  if (!inv?.paymentId) return { ok: false };
+  const result = await cancelInvoiceForPayment(inv.paymentId, motivo || 'Cancelamento manual');
+  revalidatePath('/admin/settings');
+  revalidatePath('/admin/students');
+  return result;
 }
