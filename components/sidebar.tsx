@@ -12,6 +12,16 @@ const NAV_ITEMS = [
   { href: '/profile', label: 'Perfil', icon: 'profile' },
 ];
 
+const ADMIN_ITEMS = [
+  { href: '/admin/courses', label: 'Cursos', icon: 'courses' },
+  { href: '/admin/cohorts', label: 'Turmas', icon: 'users' },
+  { href: '/admin/students', label: 'Alunos', icon: 'profile' },
+  { href: '/admin/comments', label: 'Comentários', icon: 'chat' },
+  { href: '/admin/checkouts', label: 'Checkouts', icon: 'cart' },
+  { href: '/admin/fiscal', label: 'Nota Fiscal', icon: 'file' },
+  { href: '/admin/settings', label: 'Configurações', icon: 'settings' },
+];
+
 type Props = {
   user: { name: string; level: number; xp: number; role: string };
   collapsed: boolean;
@@ -103,17 +113,22 @@ export function Sidebar({ user, collapsed, onToggle, onMobileClose, brand }: Pro
       ))}
 
       {user.role === 'admin' && (
-        <Link
-          href="/admin"
-          className="nav-item"
-          data-active={pathname.startsWith('/admin')}
-          title={collapsed ? 'Admin' : undefined}
-          onClick={onMobileClose}
-          style={{ marginTop: 2 }}
-        >
-          <Icon name="settings" size={18} />
-          <span>Admin</span>
-        </Link>
+        <div className="sidebar-admin-block">
+          <div className="sidebar-section">Admin</div>
+          {ADMIN_ITEMS.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="nav-item"
+              data-active={pathname === item.href || pathname.startsWith(item.href)}
+              title={collapsed ? item.label : undefined}
+              onClick={onMobileClose}
+            >
+              <Icon name={item.icon} size={18} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </div>
       )}
 
       <div className="sidebar-user">

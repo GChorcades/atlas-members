@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { users, enrollments, courses, cohorts, cohortMembers, lessons, lessonProgress, modules, payments, subscriptions } from '@/db/schema';
+import { users, enrollments, courses, cohorts, cohortMembers, lessons, lessonProgress, modules, payments, subscriptions, invoices } from '@/db/schema';
 import { eq, asc, sql, and, inArray, desc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getCourseStats } from '@/lib/course-stats';
@@ -126,6 +126,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .where(and(eq(subscriptions.tenantId, tenantId), eq(subscriptions.userId, id)))
     .orderBy(desc(subscriptions.createdAt));
 
+  const userInvoices = await db
+    .select({
+      id: invoices.id,
+      status: invoices.status,
+      numero: invoices.numero,
+      valor: invoices.valor,
+      pdfUrl: invoices.pdfUrl,
+      errorMessage: invoices.errorMessage,
+      createdAt: invoices.createdAt,
+      paymentId: invoices.paymentId,
+    })
+    .from(invoices)
+    .where(and(eq(invoices.tenantId, tenantId), eq(invoices.userId, id)))
+    .orderBy(desc(invoices.createdAt));
+
   return NextResponse.json({
     user: {
       id: user.id,
@@ -146,6 +161,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     },
     payments: userPayments,
     subscriptions: userSubscriptions,
+    invoices: userInvoices,
     stats: {
       coursesEnrolled: userEnrollments.length,
       avgProgress: totalProgress,

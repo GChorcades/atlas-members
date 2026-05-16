@@ -4,7 +4,6 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { AppShell } from '@/components/app-shell';
-import AdminNav from './nav';
 import { getBrand } from '@/lib/brand';
 import { getTenantId } from '@/lib/tenant';
 
@@ -28,12 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <AppShell user={dbUser} brand={{ name: brand.name, logoUrl: brand.logoUrl, logoDarkUrl: brand.logoDarkUrl, faviconUrl: brand.faviconUrl, logoOnly: brand.logoOnly, footer: brand.footer }}>
       <div className="content content-wide" style={{ maxWidth: 1440 }}>
-        <div className="eyebrow">Painel</div>
-        <h1 className="h1-serif mt-8 mb-24">Admin</h1>
-        <div className="admin-shell">
-          <AdminNav />
-          <div>{children}</div>
-        </div>
+        {children}
       </div>
     </AppShell>
   );
