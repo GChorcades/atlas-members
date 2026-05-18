@@ -30,6 +30,17 @@ export type CertificateData = {
 /** Alfabeto base32 sem caracteres ambíguos (sem 0/O, 1/I/L). */
 const BASE32_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+/** Converte um texto em slug seguro para nome de arquivo (ex.: título do curso). */
+export function slugify(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'curso';
+}
+
 /**
  * Verifica se um curso está 100% concluído por um aluno.
  * Concluído = todas as aulas publicadas dos módulos do curso têm registro
@@ -126,14 +137,71 @@ export function certificateCode(
 }
 
 /**
+ * Maior `completedAt` entre as aulas publicadas concluídas pelo aluno.
+ * Usado na emissão forçada (admin), quando o curso ainda não está 100%.
+ */
+async function latestLessonCompletion(
+  tenantId: string,
+  userId: string,
+  courseId: string,
+): Promise<Date | null> {
+  const courseModules = await db
+    .select({ id: modules.id })
+    .from(modules)
+    .where(and(eq(modules.tenantId, tenantId), eq(modules.courseId, courseId)));
+
+  const moduleIds = courseModules.map((m) => m.id);
+  if (moduleIds.length === 0) return null;
+
+  const publishedLessons = await db
+    .select({ id: lessons.id })
+    .from(lessons)
+    .where(
+      and(
+        eq(lessons.tenantId, tenantId),
+        inArray(lessons.moduleId, moduleIds),
+        eq(lessons.published, true),
+      ),
+    );
+  if (publishedLessons.length === 0) return null;
+
+  const progressRows = await db
+    .select({ completedAt: lessonProgress.completedAt })
+    .from(lessonProgress)
+    .where(
+      and(
+        eq(lessonProgress.tenantId, tenantId),
+        eq(lessonProgress.userId, userId),
+        eq(lessonProgress.done, true),
+        inArray(lessonProgress.lessonId, publishedLessons.map((l) => l.id)),
+      ),
+    );
+
+  let latest: Date | null = null;
+  for (const row of progressRows) {
+    if (row.completedAt && (!latest || row.completedAt > latest)) {
+      latest = row.completedAt;
+    }
+  }
+  return latest;
+}
+
+/**
  * Reúne todos os dados necessários para renderizar o PNG do certificado.
- * Retorna `null` se o curso não estiver concluído pelo aluno.
+ *
+ * Retorna `null` se o curso não estiver concluído pelo aluno — exceto quando
+ * `options.allowIncomplete` é `true` (emissão forçada pelo admin): nesse caso
+ * só retorna `null` se o curso ou o aluno não existir, e a data de conclusão
+ * usa o maior `completedAt` disponível ou `new Date()` se não houver nenhum.
  */
 export async function getCertificateData(
   tenantId: string,
   userId: string,
   courseId: string,
+  options?: { allowIncomplete?: boolean },
 ): Promise<CertificateData | null> {
+  const allowIncomplete = options?.allowIncomplete === true;
+
   const [course] = await db
     .select()
     .from(courses)
@@ -141,8 +209,14 @@ export async function getCertificateData(
     .limit(1);
   if (!course) return null;
 
-  const completion = await isCourseComplete(tenantId, userId, courseId);
-  if (!completion.complete) return null;
+  let completedAt: Date | null;
+  if (allowIncomplete) {
+    completedAt = await latestLessonCompletion(tenantId, userId, courseId);
+  } else {
+    const completion = await isCourseComplete(tenantId, userId, courseId);
+    if (!completion.complete) return null;
+    completedAt = completion.completedAt;
+  }
 
   const [student] = await db
     .select({ name: users.name })
@@ -156,7 +230,7 @@ export async function getCertificateData(
 
   const brand = await getBrand();
 
-  const completedAtLabel = (completion.completedAt ?? new Date()).toLocaleDateString('pt-BR', {
+  const completedAtLabel = (completedAt ?? new Date()).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

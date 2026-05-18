@@ -345,6 +345,7 @@ export default function StudentDetailPage() {
 
       {tab === 'courses' && (
         <CoursesSection
+          userId={user.id}
           enrollments={enrollments}
           availableCourses={availableCourses}
           showAddCourse={showAddCourse}
@@ -704,6 +705,7 @@ function InvoicesSection({ invoices, onRefresh }: { invoices: InvoiceItem[]; onR
 // ─── Cursos inscritos ───────────────────────────────────────────────
 
 function CoursesSection({
+  userId,
   enrollments,
   availableCourses,
   showAddCourse,
@@ -715,6 +717,7 @@ function CoursesSection({
   onToggleActive,
   onUpdateExpires,
 }: {
+  userId: string;
   enrollments: Enrollment[];
   availableCourses: { id: string; title: string; published: boolean; coverBg: string | null; coverImage: string | null; coverGlyph: string | null }[];
   showAddCourse: boolean;
@@ -808,6 +811,14 @@ function CoursesSection({
                         <p style={{ fontSize: 12.5, fontWeight: 500 }}>{fmtDate(enr.lastAccessAt)}</p>
                       </div>
                       <div className="row gap-4">
+                        <a
+                          className="icon-btn"
+                          href={`/api/admin/students/${userId}/certificate?courseId=${enr.courseId}`}
+                          download
+                          title="Baixar certificado"
+                        >
+                          <Icon name="certificate" size={14} />
+                        </a>
                         <button className="icon-btn" title={enr.active ? 'Desativar acesso a este curso' : 'Reativar acesso'} onClick={() => onToggleActive(enr.courseId, enr.active)}>
                           <Icon name={enr.active ? 'eye' : 'pause'} size={14} />
                         </button>
